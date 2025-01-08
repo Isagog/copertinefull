@@ -1,0 +1,101 @@
+.DS_Store
+# General Python Ignore Patterns
+# Ignore the Python virtual environment (venv, .env, .venv, etc.)
+venv/
+.venv/
+env/
+.env/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.pdb
+*.log
+*.db
+*.sqlite3
+*.sqlite
+# .tox, .nox, .coverage, dist, build, and *.egg-info
+tox/
+nox/
+.coverage
+*.coverage
+*.egg-info/
+dist/
+build/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# VSCode settings folder
+.vscode/
+
+# Node.js/Next.js Ignore Patterns
+# Ignore node_modules, Next.js build artifacts, etc.
+node_modules/
+.next/
+out/
+*.log
+
+# .env files for environment variables (Not committing sensitive data)
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
+.env.*
+
+# Build output and cache files
+.next/cache/
+.next/static/
+.next/server/
+
+# Next.js and npm/yarn lock files (if you want to ignore lock files too)
+package-lock.json
+yarn.lock
+
+# Dependency directories (if using package managers like pnpm or yarn)
+.pnpm/
+.yarn/
+
+# MacOS system files
+.DS_Store
+
+# Windows system files
+Thumbs.db
+
+# IDEs and Editors
+# Ignore all possible editor related files for VSCode, PyCharm, etc.
+
+# VS Code
+.vscode/
+
+# JetBrains/PyCharm (if used)
+.idea/
+
+# Python bytecode and cache
+__pycache__/
+
+# PyCharm specific settings
+*.iml
+.idea/
+
+# Python Wheel Files
+*.whl
+
+# Docker related files (if relevant, like a Docker build context)
+Dockerfile
+docker-compose.yml
+
+# Temporary files created by OS or text editors
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Yarn PnP (if you're using Yarn Plug'n'Play)
+.pnp.*
+
+# Additional Files
+# These are temporary or unnecessary files that can be safely ignored
+*.pid
+*.seed
+*.bak
