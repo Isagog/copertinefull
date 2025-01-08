@@ -1,5 +1,4 @@
-# utils.py
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import os
 from typing import Optional
@@ -8,8 +7,12 @@ from dotenv import load_dotenv
 import weaviate
 
 
+class WeaviateClientInitializationError(Exception):
+    """Custom exception for Weaviate client initialization errors."""
+
+
 def setup_logging(name: str) -> logging.Logger:
-    """Configure and return a logger"""
+    """Configure and return a logger."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -20,8 +23,9 @@ def setup_logging(name: str) -> logging.Logger:
     )
     return logging.getLogger(name)
 
+
 def init_weaviate_client() -> weaviate.WeaviateClient:
-    """Initialize Weaviate client with error handling"""
+    """Initialize Weaviate client with error handling."""
     load_dotenv()
     try:
         if os.getenv("COP_WEAVIATE_URL") == "localhost":
@@ -33,12 +37,15 @@ def init_weaviate_client() -> weaviate.WeaviateClient:
                 ),
                 host=os.getenv("COP_WEAVIATE_URL"),
             )
-        return client
     except Exception as e:
-        raise Exception(f"Failed to initialize Weaviate client: {e!s}")
+        error_message = "Failed to initialize Weaviate client"
+        raise WeaviateClientInitializationError(error_message) from e
+    else:
+        return client
+
 
 def extract_date_from_filename(filename: str) -> Optional[datetime]:
-    """Extract date from filename pattern il_manifesto_del_D_MONTH_YYYY_cover.jpg"""
+    """Extract date from filename pattern il_manifesto_del_D_MONTH_YYYY_cover.jpg."""
     try:
         month_map = {
             "gennaio": "01", "febbraio": "02", "marzo": "03", "aprile": "04",
@@ -51,7 +58,12 @@ def extract_date_from_filename(filename: str) -> Optional[datetime]:
         month = month_map[month_name.lower()]
         day = day.zfill(2)
 
-        date_str = f"{year}-{month}-{day}"
-        return datetime.strptime(date_str, "%Y-%m-%d").date()
+        # Create a timezone-aware datetime directly
+        return datetime(
+            year=int(year),
+            month=int(month),
+            day=int(day),
+            tzinfo=timezone.utc,
+        )
     except Exception:
         return None
