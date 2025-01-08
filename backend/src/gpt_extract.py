@@ -1,5 +1,6 @@
 import base64
 import os
+from pathlib import Path
 import re
 from typing import Tuple
 
@@ -15,16 +16,16 @@ class ManifestoGPTExtractor:
     def __init__(self):
         self.openai_client = OpenAI()
         self.model_name = os.getenv("COP_VISION_MODELNAME")
-        self.images_dir = "images"  # Directory where images are stored
+        self.images_dir = Path("images")  # Use Path for directories
 
     def get_image_base64(self, filename: str) -> str:
         """Load image from filesystem and convert to base64."""
         try:
-            image_path = os.path.join(self.images_dir, filename)
-            with open(image_path, "rb") as image_file:
+            image_path = self.images_dir / filename
+            with image_path.open("rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
-        except Exception as e:
-            logger.error(f"Error loading image {filename}: {e!s}")
+        except Exception:
+            logger.exception("Error loading image %s", filename)
             raise
 
     def parse_gpt_response(self, response_text: str) -> Tuple[str, str]:
@@ -45,7 +46,7 @@ class ManifestoGPTExtractor:
             return
 
         try:
-            logger.info(f"Processing object with ID: {properties['editionId']}")
+            logger.info("Processing object with ID: %s", properties["editionId"])
 
             # Get image filename and convert to base64
             image_filename = properties["editionImageStr"]
@@ -84,10 +85,10 @@ class ManifestoGPTExtractor:
                     "modelAIName": self.model_name,  # Use instance variable instead of env lookup
                 },
             )
-            logger.info(f"Successfully updated object {properties['editionId']}")
-        except Exception as e:
-            logger.error(
-                f"Error processing object {properties.get('editionId', 'unknown')}: {e!s}",
+            logger.info("Successfully updated object %s", properties["editionId"])
+        except Exception:
+            logger.exception(
+                "Error processing object %s", properties.get("editionId", "unknown"),
             )
 
 
