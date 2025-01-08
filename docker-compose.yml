@@ -1,0 +1,20 @@
+services:
+  copfront:
+    build: ./frontend
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./images:/app/images:ro  # Read-only
+    command: ["node", "server.js"]
+    restart: unless-stopped
+
+  copback:
+    build: ./backend
+    ports:
+      - "8383:8383"
+    volumes:
+      - ./images:/app/images  # Read-write mount for backend

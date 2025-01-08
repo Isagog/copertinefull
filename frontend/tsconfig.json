@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"],                  // Base alias for the entire project
+      "@app/*": ["./app/*"],          // Alias for the app directory
+      "@components/*": ["./app/components/*"], // Components alias
+      "@providers/*": ["./app/providers/*"],   // Providers alias
+      "@types/*": ["./app/types/*"],  // Types alias
+      "@data/*": ["./data/*"],        // Alias for data directory
+      "@public/*": ["./public/*"]     // Alias for public assets
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
+  <!-- MeMa logo text in pairs -->
+  <g font-family="Arial, sans-serif" font-size="120" font-weight="bold">
+    <!-- "Me" pair -->
+    <text x="20" y="90" letter-spacing="-0.15em">
+      <tspan fill="#C71D32">M</tspan>
+      <tspan fill="black">e</tspan>
+    </text>
+    <!-- "Ma" pair -->
+    <text x="200" y="90" letter-spacing="-0.15em">
+      <tspan fill="#C71D32">M</tspan>
+      <tspan fill="black">a</tspan>
+    </text>
+  </g>
+</svg>
