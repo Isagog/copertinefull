@@ -32,9 +32,8 @@ docker-compose up -d
 This will start:
 - Backend container (FastAPI server)
 - Frontend container (Web application)
-- Weaviate container
 
-The data ingestion pipeline is scheduled to run nightly at 4 AM via cron:
+The data ingestion pipeline should be scheduled to run nightly at 4 AM via cron:
 
 ```bash
 # /etc/cron.d/copertine-ingestion
@@ -70,6 +69,25 @@ The data ingestion pipeline is scheduled to run nightly at 4 AM via cron:
 - Responsive design
 - Fast search response times
 
+## Prerequisites
+
+- A running instance of Weaviate
+- Docker and Docker Compose installed
+- Configuration through `.env` file with the following variables:
+  ```
+  COP_WEAVIATE_URL=localhost
+  COP_WEAVIATE_API_KEY=your_weaviate_api_key
+  ```
+
+## Project Structure
+
+The project includes an `images/` directory that is excluded from Git tracking (via `.gitignore`). This directory stores all the Copertine JPG files that are referenced by the application.
+
+## Getting Started
+
+1. Ensure all prerequisites are met
+2. Configure your `.env` file with appropriate Weaviate connection details
+3. Start the application using Docker Compose
 
 ## API Documentation
 
@@ -79,7 +97,10 @@ The data ingestion pipeline is scheduled to run nightly at 4 AM via cron:
 
 [Development setup and guidelines to be added]
 
+## Contributing
+
+[Contribution guidelines to be added]
 
 ## License
 
-Isagog SrL all rights reserved - MIT License
+[License information to be added]
