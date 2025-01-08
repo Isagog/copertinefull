@@ -1,7 +1,9 @@
 # types.py
-from pydantic import BaseModel, Field
 from datetime import date
 from typing import Any
+
+from pydantic import BaseModel, Field
+
 
 class Copertina(BaseModel):
     testataName: str = Field(..., description="Name of the publication")
@@ -12,9 +14,9 @@ class Copertina(BaseModel):
     def model_dump(self, **kwargs) -> dict[str, Any]:
         data = super().model_dump(**kwargs)
         # Convert date to RFC3339 format
-        data['editionDateIsoStr'] = f"{data['editionDateIsoStr'].isoformat()}T00:00:00Z"
+        data["editionDateIsoStr"] = f"{data['editionDateIsoStr'].isoformat()}T00:00:00Z"
         return data
-    
+
 class CopertinExtract(Copertina):
     captionAIStr: str = Field(..., description="Text recognized as the caption")
     imageAIDeStr: str = Field(..., description="AI generated description of the image")

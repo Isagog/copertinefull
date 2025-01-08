@@ -100,3 +100,4 @@ docker-compose.yml
 *.pid
 *.seed
 *.bak
+backend/.DS_Store

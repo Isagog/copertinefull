@@ -1,12 +1,12 @@
-import os
 import base64
-from typing import Tuple
-from openai import OpenAI
+import os
 import re
+from typing import Tuple
+
+from openai import OpenAI
 
 from src.includes.prompts import GPT_PROMPT
-from src.includes.utils import setup_logging, init_weaviate_client
-
+from src.includes.utils import init_weaviate_client, setup_logging
 
 logger = setup_logging("logs/gpt_extract")
 
@@ -22,17 +22,17 @@ class ManifestoGPTExtractor:
         try:
             image_path = os.path.join(self.images_dir, filename)
             with open(image_path, "rb") as image_file:
-                return base64.b64encode(image_file.read()).decode('utf-8')
+                return base64.b64encode(image_file.read()).decode("utf-8")
         except Exception as e:
-            logger.error(f"Error loading image {filename}: {str(e)}")
+            logger.error(f"Error loading image {filename}: {e!s}")
             raise
 
     def parse_gpt_response(self, response_text: str) -> Tuple[str, str]:
         caption_match = re.search(
-            r"CAPTION:\s*(.*?)(?=DESCRIPTION:|$)", response_text, re.DOTALL
+            r"CAPTION:\s*(.*?)(?=DESCRIPTION:|$)", response_text, re.DOTALL,
         )
         description_match = re.search(
-            r"DESCRIPTION:\s*(.*?)$", response_text, re.DOTALL
+            r"DESCRIPTION:\s*(.*?)$", response_text, re.DOTALL,
         )
         return (
             caption_match.group(1).strip() if caption_match else "",
@@ -46,14 +46,14 @@ class ManifestoGPTExtractor:
 
         try:
             logger.info(f"Processing object with ID: {properties['editionId']}")
-            
+
             # Get image filename and convert to base64
-            image_filename = properties['editionImageStr']
+            image_filename = properties["editionImageStr"]
             image_base64 = self.get_image_base64(image_filename)
-            
+
             # Construct data URL for OpenAI API
             data_url = f"data:image/jpeg;base64,{image_base64}"
-            
+
             response = self.openai_client.chat.completions.create(
                 model=self.model_name,
                 messages=[
@@ -69,12 +69,12 @@ class ManifestoGPTExtractor:
                                 },
                             },
                         ],
-                    }
+                    },
                 ],
             )
 
             caption, description = self.parse_gpt_response(
-                response.choices[0].message.content
+                response.choices[0].message.content,
             )
             collection.data.update(
                 uuid=obj.uuid,
@@ -87,7 +87,7 @@ class ManifestoGPTExtractor:
             logger.info(f"Successfully updated object {properties['editionId']}")
         except Exception as e:
             logger.error(
-                f"Error processing object {properties.get('editionId', 'unknown')}: {str(e)}"
+                f"Error processing object {properties.get('editionId', 'unknown')}: {e!s}",
             )
 
 
