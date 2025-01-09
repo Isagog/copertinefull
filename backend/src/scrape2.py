@@ -11,13 +11,14 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import httpx
 import weaviate
+from weaviate.classes.query import Filter
 
 from src.includes.weschema import COPERTINE_COLL_CONFIG
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
     handlers=[
         logging.FileHandler("scraper.log"),
         logging.StreamHandler(),
@@ -37,7 +38,7 @@ class ManifestoScraper:
         load_dotenv()
         # Initialize Weaviate client
         self.client = self._init_weaviate_client()
-        self._ensure_collection()
+        self.collection = self._ensure_collection()
         # Create images directory
         IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -46,11 +47,10 @@ class ManifestoScraper:
         try:
             if os.getenv("COP_WEAVIATE_URL") == "localhost":
                 return weaviate.connect_to_local()
-            return weaviate.connect(
-                connection_params=weaviate.auth.AuthApiKey(
-                    api_key=os.getenv("COP_WEAVIATE_API_KEY"),
-                ),
-                host=os.getenv("COP_WEAVIATE_URL"),
+
+            return weaviate.connect_to_wcs(
+                cluster_url=os.getenv("COP_WEAVIATE_URL"),
+                auth_credentials=weaviate.auth.AuthApiKey(os.getenv("COP_WEAVIATE_API_KEY")),
             )
         except Exception:
             logger.exception("Failed to initialize Weaviate client")
@@ -60,6 +60,9 @@ class ManifestoScraper:
         """Ensure the Copertine collection exists in Weaviate"""
         try:
             COP_COPERTINE_COLLNAME = os.getenv("COP_COPERTINE_COLLNAME")
+
+            # Check if collection exists
+            COP_COPERTINE_COLLNAME = os.getenv("COP_COPERTINE_COLLNAME")
             if COP_COPERTINE_COLLNAME not in self.client.collections.list_all():
                 self.client.collections.create(
                     name=COPERTINE_COLL_CONFIG["class"],
@@ -67,9 +70,13 @@ class ManifestoScraper:
                     properties=COPERTINE_COLL_CONFIG["properties"],
                 )
                 logger.info("Created %s collection in Weaviate", COP_COPERTINE_COLLNAME)
+            else:
+                collection = self.client.collections.get(COP_COPERTINE_COLLNAME)
         except Exception:
             logger.exception("Failed to create collection: %s", COP_COPERTINE_COLLNAME)
             raise
+        else:
+            return collection
 
     def transform_image_url_to_full_url(self, image_url: str) -> str:
         """Transform relative image URL to full URL"""
@@ -171,17 +178,61 @@ class ManifestoScraper:
                 "captionStr": title,
                 "kickerStr": body,
             }
-            collection = self.client.collections.get("Copertine")
-            collection.data.insert(data)
+
+            # Create object using V4 syntax
+            self.collection.data.insert(data)
             logger.info("Successfully stored data in Weaviate for date %s", date_str)
         except Exception:
             logger.exception("Failed to store data in Weaviate for date %s", date_str)
 
-    def check_manifesto_urls(
-        self,
-        start_date: datetime,
-        end_date: datetime,
-    ) -> Optional[dict[str, Any]]:
+    def _check_edition_exists(self, date_str: str) -> bool:
+        """Check if edition already exists in Weaviate"""
+        try:
+            result = self.collection.query.fetch_objects(
+                filters=Filter.by_property("editionId").equal(date_str),
+                limit=1,
+            )
+            return len(result.objects) > 0
+        except Exception:
+            logger.exception("Failed to check edition existence in Weaviate collection %s for date %s", os.getenv("COP_COPERTINE_COLLNAME"), date_str)
+            return False
+
+    @staticmethod
+    def check_url_exists(client: httpx.Client, url: str) -> bool:
+        """Check if a given URL exists and returns a valid response."""
+        try:
+            response = client.get(url)
+        except httpx.RequestError:
+            logger.exception("Error checking %s", url)
+            return False
+        else:
+            return response.status_code == HTTP_STATUS_OK
+
+    def check_and_get_edition(self, client: httpx.Client, url: str, date_str: str) -> tuple[bool, Optional[httpx.Response]]:
+        """Check if edition exists at URL and hasn't been processed yet."""
+        edition_exists = self.check_url_exists(client, url)
+
+        if not edition_exists:
+            return False, None
+
+        logger.info("Found edition URL for date %s", date_str)
+
+        # Check if already in Weaviate
+        edition_in_collection = self._check_edition_exists(date_str)
+        if edition_in_collection:
+            logger.info("Edition for date %s already in Weaviate collection, skipping", date_str)
+            return False, None
+
+        # Get the actual response for processing
+        try:
+            response = client.get(url)
+        except httpx.RequestError:
+            logger.exception("Error fetching %s", url)
+            return False, None
+        else:
+            return True, response
+
+    def fetch_manifesto_edition_data(self, start_date: datetime, end_date: datetime) -> Optional[Dict[str, Any]]:
         """Check historical il manifesto URLs and extract content"""
         base_url = "https://ilmanifesto.it/edizioni/il-manifesto/il-manifesto-del-{}"
         results = {}
@@ -193,40 +244,36 @@ class ManifestoScraper:
             date_str = current_date.strftime("%d-%m-%Y")
             url = base_url.format(date_str)
 
-            try:
-                response = client.get(url)
-                exists = response.status_code == HTTP_STATUS_OK
+            should_process, response = self.check_and_get_edition(client, url, date_str)
 
-                if exists:
-                    page_info = self.extract_page_info(response.text)
-                    if page_info and page_info["image_url"]:
-                        image_filename = self.transform_image_url_to_filename(
-                            page_info["image_url"],
-                            date_str,
-                        )
-                        if image_filename:
-                            image_path = IMAGES_DIR / image_filename
-                            if self.download_image(client, page_info["image_url"], image_path):
-                                page_info["saved_image"] = str(image_path)
-                                logger.info("Downloaded image to %s", image_path)
-                                # Store in Weaviate
-                                self.store_in_weaviate(date_str, page_info, image_filename)
+            if should_process and response:
+                # Process new edition
+                logger.info("Processing new edition for date %s", date_str)
+                page_info = self.extract_page_info(response.text)
+                if page_info and page_info["image_url"]:
+                    image_filename = self.transform_image_url_to_filename(
+                        page_info["image_url"],
+                        date_str,
+                    )
+                    if image_filename:
+                        image_path = IMAGES_DIR / image_filename
+                        if self.download_image(client, page_info["image_url"], image_path):
+                            page_info["saved_image"] = str(image_path)
+                            logger.info("Downloaded image to %s", image_path)
+                            # Store in Weaviate
+                            self.store_in_weaviate(date_str, page_info, image_filename)
 
-                        results[date_str] = page_info
-                        logger.info(
-                            "Date: %s\nTitle: %s\nImage: %s\nBody: %s\n%s",
-                            date_str,
-                            page_info.get("title"),
-                            page_info.get("image_url"),
-                            page_info.get("body"),
-                            SEPARATOR_LINE,
-                        )
-                    else:
-                        logger.warning("No Opening3 section found for %s", date_str)
-
-            except httpx.RequestError:
-                logger.exception("Error checking %s", url)
-                continue
+                    results[date_str] = page_info
+                    logger.info(
+                        "Date: %s\nTitle: %s\nImage: %s\nBody: %s\n%s",
+                        date_str,
+                        page_info.get("title"),
+                        page_info.get("image_url"),
+                        page_info.get("body"),
+                        SEPARATOR_LINE,
+                    )
+                else:
+                    logger.warning("No Opening3 section found for %s", date_str)
 
             time.sleep(1)
             current_date -= timedelta(days=1)
@@ -243,7 +290,6 @@ class ManifestoScraper:
         if hasattr(self, "client"):
             self.client.close()
 
-
 if __name__ == "__main__":
     try:
         scraper = ManifestoScraper()
@@ -252,7 +298,8 @@ if __name__ == "__main__":
         # End date (January 1st, 2025)
         end_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
-        scraper.check_manifesto_urls(start_date, end_date)
+        scraper.fetch_manifesto_edition_data(start_date, end_date)
+
     except Exception:
         logger.exception("Application failed")
     finally:
