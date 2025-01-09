@@ -165,8 +165,8 @@ class ManifestoScraper:
             title = page_info.get("title", "")
             body = page_info.get("body", "")
 
-            # If body starts with title, remove title and one following whitespace
-            if body.startswith(title):
+            # If body starts with title, remove title and any following whitespace
+            if title and body.startswith(title):
                 body = body[len(title):].lstrip()
 
             data = {
