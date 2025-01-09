@@ -46,20 +46,34 @@ def download_image(client: httpx.Client, image_url: str, filename: Path) -> bool
     """
     try:
         full_url = transform_image_url_to_full_url(image_url)
+        logger.info("Attempting to download image from: %s", full_url)
         response = client.get(full_url)
     except httpx.RequestError:
         logger.exception("Error downloading image %s", image_url)
         return False
     else:
         if response.status_code == HTTP_STATUS_OK:
-            filename.parent.mkdir(parents=True, exist_ok=True)
-            filename.write_bytes(response.content)
-            return True
+            try:
+                abs_path = filename.resolve()
+                logger.info("Creating directory: %s", abs_path.parent)
+                abs_path.parent.mkdir(parents=True, exist_ok=True)
+
+                logger.info("Saving image to: %s", abs_path)
+                abs_path.write_bytes(response.content)
+            except Exception:
+                logger.exception("Error saving image to %s", abs_path)
+                return False
+            else:
+                logger.info("Image saved successfully. Size: %d bytes", len(response.content))
+                return True
+
+        logger.warning("Failed to download image. Status code: %d", response.status_code)
         return False
 
 def transform_image_url_to_filename(image_url: str, date_str: str) -> str:
     """
-    Transform CDN URL to a filename
+    Transform CDN URL to a filename following pattern:
+    il-manifesto_YYYY-MM-DD_original-filename.jpg
     Args:
         image_url: Original CDN URL
         date_str: Date string in DD-MM-YYYY format
@@ -67,20 +81,25 @@ def transform_image_url_to_filename(image_url: str, date_str: str) -> str:
         str: Transformed filename
     """
     # Extract the real image path after /https://
-    match = re.search(r"https://static\.ilmanifesto\.it/(.*?)$", image_url)
+    match = re.search(r"https://static\.ilmanifesto\.it/(?:\d{4}/\d{2}/\d{2})?(.+?)$", image_url)
     if not match:
         # Try alternative pattern for relative URLs
-        match = re.search(r"/cdn-cgi/image/[^/]+/https://static\.ilmanifesto\.it/(.*?)$", image_url)
+        match = re.search(r"/cdn-cgi/image/[^/]+/https://static\.ilmanifesto\.it/(?:\d{4}/\d{2}/\d{2})?(.+?)$", image_url)
         if not match:
             return ""
 
+    # Get the original filename without date prefix path
     image_path = match.group(1)
+    # Replace any remaining slashes with hyphens
+    image_path = image_path.replace("/", "-")
+
     # Convert date from DD-MM-YYYY to YYYY-MM-DD for filename
     date_parts = date_str.split("-")
     formatted_date = f"{date_parts[2]}-{date_parts[1]}-{date_parts[0]}"
 
-    # Create filename
-    return f"il-manifesto-{formatted_date}-{image_path}"
+    # Create filename with requested format
+    return f"il-manifesto_{formatted_date}_{image_path}"
+
 def extract_page_info(html_content: str) -> Dict[str, Any]:
     """
     Extract information from the page HTML
@@ -197,6 +216,6 @@ if __name__ == "__main__":
     # Start from today with explicit timezone
     start_date = datetime.now(tz=timezone.utc)
     # End date (January 1st, 2012)
-    end_date = datetime(2012, 1, 1, tzinfo=timezone.utc)
+    end_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
     check_manifesto_urls(start_date, end_date)
