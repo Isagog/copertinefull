@@ -62,9 +62,8 @@ class ManifestoScraper:
             COP_COPERTINE_COLLNAME = os.getenv("COP_COPERTINE_COLLNAME")
 
             # Check if collection exists
-            COP_COPERTINE_COLLNAME = os.getenv("COP_COPERTINE_COLLNAME")
             if COP_COPERTINE_COLLNAME not in self.client.collections.list_all():
-                self.client.collections.create(
+                collection = self.client.collections.create(
                     name=COPERTINE_COLL_CONFIG["class"],
                     description=COPERTINE_COLL_CONFIG["description"],
                     properties=COPERTINE_COLL_CONFIG["properties"],
@@ -72,11 +71,11 @@ class ManifestoScraper:
                 logger.info("Created %s collection in Weaviate", COP_COPERTINE_COLLNAME)
             else:
                 collection = self.client.collections.get(COP_COPERTINE_COLLNAME)
+
+            return collection
         except Exception:
             logger.exception("Failed to create collection: %s", COP_COPERTINE_COLLNAME)
             raise
-        else:
-            return collection
 
     def transform_image_url_to_full_url(self, image_url: str) -> str:
         """Transform relative image URL to full URL"""
@@ -296,7 +295,7 @@ if __name__ == "__main__":
         # Start from today with explicit timezone
         start_date = datetime.now(tz=timezone.utc)
         # End date (January 1st, 2025)
-        end_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        end_date = datetime(2024, 12, 30, tzinfo=timezone.utc)
 
         scraper.fetch_manifesto_edition_data(start_date, end_date)
 
