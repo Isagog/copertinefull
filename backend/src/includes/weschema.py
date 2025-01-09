@@ -15,7 +15,7 @@ Property level config
 
 # Fetch class names from environment variables
 COP_COPERTINE_COLLNAME = os.getenv(
-    "COP_COPERTINE_COLLNAME", "Copertine"
+    "COP_COPERTINE_COLLNAME", "Copertine",
 )  # Default to "Copertine" if not set
 
 COPERTINE_COLL_CONFIG = {
