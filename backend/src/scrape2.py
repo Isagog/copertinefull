@@ -58,9 +58,10 @@ class ManifestoScraper:
 
     def _ensure_collection(self):
         """Ensure the Copertine collection exists in Weaviate"""
-        try:
-            COP_COPERTINE_COLLNAME = os.getenv("COP_COPERTINE_COLLNAME")
+        COP_COPERTINE_COLLNAME = os.getenv("COP_COPERTINE_COLLNAME")
+        collection = None
 
+        try:
             # Check if collection exists
             if COP_COPERTINE_COLLNAME not in self.client.collections.list_all():
                 collection = self.client.collections.create(
@@ -71,11 +72,11 @@ class ManifestoScraper:
                 logger.info("Created %s collection in Weaviate", COP_COPERTINE_COLLNAME)
             else:
                 collection = self.client.collections.get(COP_COPERTINE_COLLNAME)
-
-            return collection
         except Exception:
             logger.exception("Failed to create collection: %s", COP_COPERTINE_COLLNAME)
             raise
+
+        return collection
 
     def transform_image_url_to_full_url(self, image_url: str) -> str:
         """Transform relative image URL to full URL"""
