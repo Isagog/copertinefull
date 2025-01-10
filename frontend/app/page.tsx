@@ -5,6 +5,7 @@ import React from 'react';
 import { ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import CopertinaCard from './components/copertina/CopertinaCard';
 import type { CopertineEntry, CopertineResponse, PaginationInfo } from './types/copertine';
+import { COPERTINEPERPAGE } from '@/app/constants';
 
 type SortField = 'date' | 'extracted_caption';
 type SortDirection = 'asc' | 'desc';
@@ -14,7 +15,7 @@ export default function Home() {
     const [pagination, setPagination] = React.useState<PaginationInfo>({
         total: 0,
         offset: 0,
-        limit: 50,
+        limit: COPERTINEPERPAGE,
         hasMore: true
     });
     const [sortField, setSortField] = React.useState<SortField>('date');
