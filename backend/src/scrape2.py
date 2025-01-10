@@ -350,8 +350,8 @@ if __name__ == "__main__":
         if most_recent_date:
             end_date = most_recent_date + timedelta(days=1)
         else:
-            end_date = datetime(2024, 12, 30, tzinfo=timezone.utc)
-            logger.info("No editions found in collection, using default end date")
+            end_date = datetime(2013, 3, 27, tzinfo=timezone.utc)
+            logger.info("No editions found in collection, using default end date %s", end_date)
 
         # This is the key line that prints the separator and date range
         logger.info("\n%s\nScraping editions from %s to %s\n%s",
