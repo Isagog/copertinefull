@@ -13,7 +13,7 @@ import httpx
 import weaviate
 from weaviate.classes.query import Filter, Sort
 
-from src.includes.weschema import COPERTINE_COLL_CONFIG
+from includes.weschema import COPERTINE_COLL_CONFIG
 
 # Configure logging
 logging.basicConfig(
