@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getWeaviateClient } from '@app/lib/weaviate';
 import { CopertineEntry } from '@app/types/copertine';
 import { WeaviateItem, WeaviateGetResponse } from '@app/types/weaviate';
+import { copertineCache } from '@app/lib/cache';
 
 export async function GET(request: NextRequest) {
     try {
@@ -10,8 +11,19 @@ export async function GET(request: NextRequest) {
         const offset = parseInt(searchParams.get('offset') || '0');
         const limit = parseInt(searchParams.get('limit') || '50');
 
+        // Check cache first
+        const cachedData = copertineCache.get(offset);
+        if (cachedData) {
+            return NextResponse.json({
+                data: cachedData.data,
+                pagination: cachedData.pagination,
+                cached: true // Optional: for debugging
+            });
+        }
+
         const client = getWeaviateClient();
         
+        // Fetch fresh data
         const result = await client.graphql
             .get()
             .withClassName('Copertine')
@@ -49,10 +61,10 @@ export async function GET(request: NextRequest) {
             kickerStr: item.kickerStr,
             date: new Date(item.editionDateIsoStr).toLocaleDateString('it-IT'),
             filename: item.editionImageFnStr,
-            isoDate: item.editionDateIsoStr // Adding this for proper sorting
+            isoDate: item.editionDateIsoStr
         }));
 
-        return NextResponse.json({
+        const responseData = {
             data: mappedData,
             pagination: {
                 total: totalCount,
@@ -60,7 +72,16 @@ export async function GET(request: NextRequest) {
                 limit,
                 hasMore: offset + limit < totalCount
             }
+        };
+
+        // Cache the response
+        copertineCache.set(offset, {
+            data: mappedData,
+            pagination: responseData.pagination,
+            timestamp: Date.now()
         });
+
+        return NextResponse.json(responseData);
     } catch (error) {
         console.error('Error fetching data from Weaviate:', error);
         return NextResponse.json(

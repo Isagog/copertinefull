@@ -22,7 +22,7 @@ export default function Home() {
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
-    const fetchCopertine = React.useCallback(async (offset: number) => {
+    const fetchPage = React.useCallback(async (offset: number) => {
         try {
             setIsLoading(true);
             const response = await fetch(`/api/copertine?offset=${offset}&limit=${pagination.limit}`);
@@ -39,8 +39,8 @@ export default function Home() {
     }, [pagination.limit]);
 
     React.useEffect(() => {
-        fetchCopertine(0);
-    }, [fetchCopertine]);
+        fetchPage(0);
+    }, [fetchPage]);
 
     const handleSort = (field: SortField) => {
         if (field === sortField) {
@@ -66,7 +66,7 @@ export default function Home() {
     }, [copertine, sortField, sortDirection]);
 
     const handlePageChange = (newOffset: number) => {
-        fetchCopertine(newOffset);
+        fetchPage(newOffset);
     };
 
     const goToFirst = () => handlePageChange(0);
