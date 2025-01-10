@@ -44,7 +44,6 @@ class ManifestoScraper:
         # Create images directory
         IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-
     def _init_weaviate_client(self) -> weaviate.WeaviateClient:
         """Initialize Weaviate client with error handling"""
         try:
