@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import httpx
 import weaviate
-from weaviate.classes.query import Filter
+from weaviate.classes.query import Filter, Sort
 
 from src.includes.weschema import COPERTINE_COLL_CONFIG
 
@@ -34,6 +34,8 @@ IMAGES_DIR = Path("images")
 
 class ManifestoScraper:
     def __init__(self):
+        self.client = None
+        self.collection = None
         # Load environment variables
         load_dotenv()
         # Initialize Weaviate client
@@ -41,6 +43,7 @@ class ManifestoScraper:
         self.collection = self._ensure_collection()
         # Create images directory
         IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
 
     def _init_weaviate_client(self) -> weaviate.WeaviateClient:
         """Initialize Weaviate client with error handling"""
@@ -290,13 +293,73 @@ class ManifestoScraper:
         if hasattr(self, "client"):
             self.client.close()
 
+    def get_most_recent_edition_date(self) -> Optional[datetime]:
+        """Get the most recent edition date from Weaviate collection"""
+        try:
+            # Query with sort by editionDateIsoStr in descending order
+            result = self.collection.query.fetch_objects(
+                sort=Sort.by_property(name="editionDateIsoStr", ascending=False),
+                limit=1,
+            )
+        except Exception:
+            logger.exception("Failed to get most recent edition date from Weaviate")
+            return None
+        else:
+            if result.objects:
+                try:
+                    # Get the date from properties
+                    latest_date = result.objects[0].properties["editionDateIsoStr"]
+                    logger.info("Found latest date: %s (%s)", latest_date, type(latest_date))
+
+                    # If it's already a datetime, just ensure timezone
+                    if isinstance(latest_date, datetime):
+                        return latest_date.replace(tzinfo=timezone.utc)
+
+                    # If it's a string in our known format
+                    return datetime.fromisoformat(str(latest_date))
+                except (ValueError, KeyError):
+                    logger.exception("Error parsing date from Weaviate")
+                    return None
+            return None
+
+    def cleanup(self):
+        """Explicit cleanup method to ensure resources are properly released"""
+        if self.client:
+            try:
+                self.client.close()
+            except Exception:
+                logger.exception("Error while closing Weaviate client")
+            finally:
+                self.client = None
+                self.collection = None
+
+    def __enter__(self):
+        """Support for context manager protocol"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Ensure cleanup when used as context manager"""
+        self.cleanup()
+
 if __name__ == "__main__":
     try:
         scraper = ManifestoScraper()
-        # Start from today with explicit timezone
         start_date = datetime.now(tz=timezone.utc)
-        # End date (January 1st, 2025)
-        end_date = datetime(2024, 12, 30, tzinfo=timezone.utc)
+
+        # Get most recent date from collection and set end date
+        most_recent_date = scraper.get_most_recent_edition_date()
+        if most_recent_date:
+            end_date = most_recent_date + timedelta(days=1)
+        else:
+            end_date = datetime(2024, 12, 30, tzinfo=timezone.utc)
+            logger.info("No editions found in collection, using default end date")
+
+        # This is the key line that prints the separator and date range
+        logger.info("\n%s\nScraping editions from %s to %s\n%s",
+                   SEPARATOR_LINE,
+                   start_date.strftime("%Y-%m-%d %H:%M %Z"),
+                   end_date.strftime("%Y-%m-%d %H:%M %Z"),
+                   SEPARATOR_LINE)
 
         scraper.fetch_manifesto_edition_data(start_date, end_date)
 
