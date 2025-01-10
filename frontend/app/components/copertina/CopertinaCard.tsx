@@ -1,5 +1,6 @@
+// app/components/copertina/CopertinaCard.tsx
 import { useState, useEffect } from "react";
-import { CopertineEntry } from "@/app/types/copertine";
+import { CopertineEntry } from "@app/types/copertine";
 import Image from "next/image";
 
 interface CopertinaCardProps {
@@ -9,7 +10,8 @@ interface CopertinaCardProps {
 export default function CopertinaCard({ copertina }: CopertinaCardProps) {
   const [isPopupVisible, setIsPopupVisible] = useState(false);
 
-  const imagePath = `/data/copertine/${copertina.filename}`;
+  // Updated image path to use /images/
+  const imagePath = `/images/${copertina.filename}`;
   const eyeIconPath = `/icons8-eye-50.png`;
 
   const togglePopup = () => {
@@ -59,29 +61,29 @@ export default function CopertinaCard({ copertina }: CopertinaCardProps) {
         </div>
 
         {/* Description */}
-<div className="flex items-start gap-4 text-lg leading-relaxed text-gray-700 dark:text-gray-300">
-  <Image
-    src="/mema.svg" // Replace with the actual path to the "MeMa" icon
-    alt="MeMa Icon"
-    width={50} // Increased size
-    height={50}
-    className="flex-shrink-0 self-start" // Ensures the icon aligns with the top of the text
-  />
-  <p className="text-justify">
-    {copertina.image_description}
-  </p>
-</div>
+        <div className="flex items-start gap-4 text-lg leading-relaxed text-gray-700 dark:text-gray-300">
+          <Image
+            src="/mema.svg"
+            alt="MeMa Icon"
+            width={50}
+            height={50}
+            className="flex-shrink-0 self-start"
+          />
+          <p className="text-justify">
+            {copertina.kickerStr}
+          </p>
+        </div>
       </div>
 
       {/* Popup Modal */}
       {isPopupVisible && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          onClick={closePopup} // Close when clicking outside the modal
+          onClick={closePopup}
         >
           <div
             className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 relative max-w-2xl w-full"
-            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside the modal
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={closePopup}
@@ -109,7 +111,7 @@ export default function CopertinaCard({ copertina }: CopertinaCardProps) {
               width={800}
               height={600}
               className="rounded cursor-pointer"
-              onClick={closePopup} // Close when clicking on the image
+              onClick={closePopup}
             />
           </div>
         </div>

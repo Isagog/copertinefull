@@ -1,12 +1,24 @@
 // app/types/copertine.ts
 export interface CopertineData {
-    model: string;
     extracted_caption: string;
-    image_description: string;
+    kickerStr: string;
     date: string;
-    extraction_timestamp: string;
-  }
-  
-  export interface CopertineEntry extends CopertineData {
+    isoDate: string; // Added for proper sorting
+    extraction_timestamp?: string;
+}
+
+export interface CopertineEntry extends CopertineData {
     filename: string;
-  }
+}
+
+export interface PaginationInfo {
+    total: number;
+    offset: number;
+    limit: number;
+    hasMore: boolean;
+}
+
+export interface CopertineResponse {
+    data: CopertineEntry[];
+    pagination: PaginationInfo;
+}
