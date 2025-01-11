@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import sys
 import time
 from typing import Any, Dict, Optional
 
@@ -31,6 +32,10 @@ HTTP_STATUS_OK = 200
 SEPARATOR_LINE = "-" * 50
 OUTPUT_FILE = Path("manifesto_archive.json")
 IMAGES_DIR = Path("images")
+MISSING_ENV_VAR_MSG = "COPERTINE_START_DATE environment variable must be set (format: YYYY-MM-DD)"
+INVALID_DATE_FORMAT_MSG = "Invalid start date format. Expected YYYY-MM-DD."
+
+
 
 class ManifestoScraper:
     def __init__(self):
@@ -92,6 +97,8 @@ class ManifestoScraper:
             full_url = self.transform_image_url_to_full_url(image_url)
             logger.info("Attempting to download image from: %s", full_url)
             response = client.get(full_url)
+            logger.info("Response status: %d", response.status_code)
+            logger.info("Response headers: %s", response.headers)
         except httpx.RequestError:
             logger.exception("Error downloading image %s", image_url)
             return False
@@ -234,15 +241,16 @@ class ManifestoScraper:
         else:
             return True, response
 
-    def fetch_manifesto_edition_data(self, start_date: datetime, end_date: datetime) -> Optional[Dict[str, Any]]:
-        """Check historical il manifesto URLs and extract content"""
+    def fetch_manifesto_edition_data(self, newest_date: datetime, oldest_date: datetime) -> Optional[Dict[str, Any]]:
+        """Check historical il manifesto URLs and extract content, starting from newest to oldest"""
         base_url = "https://ilmanifesto.it/edizioni/il-manifesto/il-manifesto-del-{}"
         results = {}
 
         client = httpx.Client(timeout=10.0, follow_redirects=True)
 
-        current_date = start_date
-        while current_date >= end_date:
+        # Start from newest_date and iterate backwards towards oldest_date
+        current_date = newest_date
+        while current_date >= oldest_date:
             date_str = current_date.strftime("%d-%m-%Y")
             url = base_url.format(date_str)
 
@@ -343,24 +351,46 @@ class ManifestoScraper:
 if __name__ == "__main__":
     try:
         scraper = ManifestoScraper()
-        start_date = datetime.now(tz=timezone.utc)
+        newest_date = datetime.now(tz=timezone.utc)
 
-        # Get most recent date from collection and set end date
-        most_recent_date = scraper.get_most_recent_edition_date()
-        if most_recent_date:
-            end_date = most_recent_date + timedelta(days=1)
+        # Get most recent date from collection
+        most_recent_stored_date = scraper.get_most_recent_edition_date()
+
+        if most_recent_stored_date:
+            # Check if most recent date is today
+            if most_recent_stored_date.date() >= newest_date.date():
+                logger.info("Already up to date. No new editions to fetch.")
+                sys.exit(0)
+
+            # We'll scrape from today back until the day after the most recent found
+            oldest_date = most_recent_stored_date + timedelta(days=1)
         else:
-            end_date = datetime(2013, 3, 27, tzinfo=timezone.utc)
-            logger.info("No editions found in collection, using default end date %s", end_date)
+            # No editions found, use configured start date as oldest_date
+            oldest_date_str = os.getenv("COPERTINE_START_DATE")
 
-        # This is the key line that prints the separator and date range
-        logger.info("\n%s\nScraping editions from %s to %s\n%s",
+            def validate_start_date():
+                """Validate and parse the start date from environment."""
+                if not oldest_date_str:
+                    raise ValueError(MISSING_ENV_VAR_MSG)  # noqa: TRY301
+
+                try:
+                    # Parse with timezone info to fix DTZ007
+                    return datetime.strptime(f"{oldest_date_str} +0000", "%Y-%m-%d %z")
+                except ValueError:
+                    logger.exception("Invalid date format")
+                    raise ValueError(INVALID_DATE_FORMAT_MSG) from None
+
+            oldest_date = validate_start_date()
+            logger.info("No editions found in collection, using configured start date %s", oldest_date_str)
+
+        # Log the date range we'll be scraping
+        logger.info("\n%s\nScraping editions from newest (%s) to oldest (%s)\n%s",
                    SEPARATOR_LINE,
-                   start_date.strftime("%Y-%m-%d %H:%M %Z"),
-                   end_date.strftime("%Y-%m-%d %H:%M %Z"),
+                   newest_date.strftime("%Y-%m-%d %H:%M %Z"),
+                   oldest_date.strftime("%Y-%m-%d %H:%M %Z"),
                    SEPARATOR_LINE)
 
-        scraper.fetch_manifesto_edition_data(start_date, end_date)
+        scraper.fetch_manifesto_edition_data(newest_date, oldest_date)
 
     except Exception:
         logger.exception("Application failed")
