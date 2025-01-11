@@ -61,7 +61,7 @@ export default function CopertinaCard({ copertina }: CopertinaCardProps) {
   }, [isPopupVisible]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-6 border border-gray-100 dark:border-gray-700">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-6 border border-gray-100 dark:border-gray-700 max-w-4xl w-full">
       <div className="space-y-6">
         {/* Title and Date row */}
         <div className="flex flex-wrap items-center gap-2 text-lg">
@@ -76,8 +76,8 @@ export default function CopertinaCard({ copertina }: CopertinaCardProps) {
 
         {/* Image and Kicker container */}
         <div className="flex gap-6">
-          {/* Image */}
-          <div className="flex-shrink-0 w-[400px]">
+          {/* Image - reduced width from 400px to 288px (w-72) */}
+          <div className="flex-shrink-0 w-72">
             <div 
               className="relative aspect-[4/3] w-full rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
               onClick={togglePopup}
@@ -91,8 +91,8 @@ export default function CopertinaCard({ copertina }: CopertinaCardProps) {
             </div>
           </div>
 
-          {/* Kicker Text */}
-          <div className="flex-1 text-lg leading-relaxed text-gray-700 dark:text-gray-300">
+          {/* Kicker Text - constrained width */}
+          <div className="max-w-lg text-lg leading-relaxed text-gray-700 dark:text-gray-300">
             <p className="text-justify">
               {copertina.kickerStr}
             </p>
@@ -100,12 +100,12 @@ export default function CopertinaCard({ copertina }: CopertinaCardProps) {
         </div>
       </div>
 
-      {/* Popup Modal */}
       {isPopupVisible && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
           onClick={closePopup}
         >
+          {/* Replace everything from here... */}
           <div
             className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 relative max-w-4xl w-full mx-4"
             onClick={(e) => e.stopPropagation()}
@@ -139,6 +139,7 @@ export default function CopertinaCard({ copertina }: CopertinaCardProps) {
               onClick={closePopup}
             />
           </div>
+          {/* ...to here */}
         </div>
       )}
     </div>
