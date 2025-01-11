@@ -48,6 +48,9 @@ class ManifestoScraper:
         self.collection = self._ensure_collection()
         # Create images directory
         IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+        # Check if JSON saving is enabled
+        self.save_to_json = os.getenv("COP_SAVE_TO_JSON", "false").lower() == "true"
+
 
     def _init_weaviate_client(self) -> weaviate.WeaviateClient:
         """Initialize Weaviate client with error handling"""
@@ -248,52 +251,58 @@ class ManifestoScraper:
 
         client = httpx.Client(timeout=10.0, follow_redirects=True)
 
-        # Start from newest_date and iterate backwards towards oldest_date
-        current_date = newest_date
-        while current_date >= oldest_date:
-            date_str = current_date.strftime("%d-%m-%Y")
-            url = base_url.format(date_str)
+        try:
+            # Start from newest_date and iterate backwards towards oldest_date
+            current_date = newest_date
+            while current_date >= oldest_date:
+                date_str = current_date.strftime("%d-%m-%Y")
+                url = base_url.format(date_str)
 
-            should_process, response = self.check_and_get_edition(client, url, date_str)
+                should_process, response = self.check_and_get_edition(client, url, date_str)
 
-            if should_process and response:
-                # Process new edition
-                logger.info("Processing new edition for date %s", date_str)
-                page_info = self.extract_page_info(response.text)
-                if page_info and page_info["image_url"]:
-                    image_filename = self.transform_image_url_to_filename(
-                        page_info["image_url"],
-                        date_str,
-                    )
-                    if image_filename:
-                        image_path = IMAGES_DIR / image_filename
-                        if self.download_image(client, page_info["image_url"], image_path):
-                            page_info["saved_image"] = str(image_path)
-                            logger.info("Downloaded image to %s", image_path)
-                            # Store in Weaviate
-                            self.store_in_weaviate(date_str, page_info, image_filename)
+                if should_process and response:
+                    # Process new edition
+                    logger.info("Processing new edition for date %s", date_str)
+                    page_info = self.extract_page_info(response.text)
+                    if page_info and page_info["image_url"]:
+                        image_filename = self.transform_image_url_to_filename(
+                            page_info["image_url"],
+                            date_str,
+                        )
+                        if image_filename:
+                            image_path = IMAGES_DIR / image_filename
+                            if self.download_image(client, page_info["image_url"], image_path):
+                                page_info["saved_image"] = str(image_path)
+                                logger.info("Downloaded image to %s", image_path)
+                                # Store in Weaviate
+                                self.store_in_weaviate(date_str, page_info, image_filename)
 
-                    results[date_str] = page_info
-                    logger.info(
-                        "Date: %s\nTitle: %s\nImage: %s\nBody: %s\n%s",
-                        date_str,
-                        page_info.get("title"),
-                        page_info.get("image_url"),
-                        page_info.get("body"),
-                        SEPARATOR_LINE,
-                    )
-                else:
-                    logger.warning("No Opening3 section found for %s", date_str)
+                        if self.save_to_json:
+                            results[date_str] = page_info
+                            logger.info(
+                                "Date: %s\nTitle: %s\nImage: %s\nBody: %s\n%s",
+                                date_str,
+                                page_info.get("title"),
+                                page_info.get("image_url"),
+                                page_info.get("body"),
+                                SEPARATOR_LINE,
+                            )
+                    else:
+                        logger.warning("No Opening3 section found for %s", date_str)
 
-            time.sleep(1)
-            current_date -= timedelta(days=1)
+                time.sleep(1)
+                current_date -= timedelta(days=1)
 
-        client.close()
+        finally:
+            client.close()
 
-        with OUTPUT_FILE.open("w", encoding="utf-8") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
+        # Only save to JSON file if enabled
+        if self.save_to_json:
+            logger.info("Saving results to JSON file")
+            with OUTPUT_FILE.open("w", encoding="utf-8") as f:
+                json.dump(results, f, ensure_ascii=False, indent=2)
 
-        return results
+        return results if self.save_to_json else None
 
     def __del__(self):
         """Ensure client is properly closed"""
