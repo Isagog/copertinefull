@@ -1,4 +1,4 @@
-# Dockerfile
+# Base image for Node.js
 FROM node:20-alpine AS base
 
 # Install pnpm
@@ -34,6 +34,12 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# Define runtime environment variables
+ENV WEAVIATE_SCHEME=http
+ENV WEAVIATE_HOST=weaviate:8080
+ENV WEAVIATE_COLLECTION=Copertine
+
+# Copy necessary files
 COPY --from=builder /app/public ./public
 
 # Set the correct permission for prerender cache
