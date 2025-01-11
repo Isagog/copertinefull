@@ -21,6 +21,15 @@ interface PageCache {
     [key: number]: CacheEntry;
 }
 
+interface WeaviateCopertineItem {
+    captionStr: string;
+    editionDateIsoStr: string;
+    editionId: string;
+    editionImageFnStr: string;
+    kickerStr: string;
+    testataName: string;
+}
+
 class CopertineCache {
     private static instance: CopertineCache;
     private cache: PageCache = {};
@@ -89,7 +98,7 @@ class CopertineCache {
 
         const totalCount = countResult.data.Aggregate.Copertine[0].meta.count;
 
-        const mappedData: CopertineEntry[] = result.data.Get.Copertine.map((item: any) => ({
+        const mappedData: CopertineEntry[] = result.data.Get.Copertine.map((item: WeaviateCopertineItem) => ({
             extracted_caption: item.captionStr,
             kickerStr: item.kickerStr,
             date: new Date(item.editionDateIsoStr).toLocaleDateString('it-IT'),

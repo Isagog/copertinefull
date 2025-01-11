@@ -106,14 +106,6 @@ export default function Home() {
     };
 
 
-    const goToFirst = () => handlePageChange(0);
-    const goToLast = () => handlePageChange(Math.floor(pagination.total / pagination.limit) * pagination.limit);
-    const goToNext = () => handlePageChange(pagination.offset + pagination.limit);
-    const goToPrevious = () => handlePageChange(Math.max(0, pagination.offset - pagination.limit));
-
-    const totalPages = pagination.total > 0 ? Math.ceil(pagination.total / pagination.limit) : 1;
-    const currentPage = pagination.total > 0 ? Math.floor(pagination.offset / pagination.limit) + 1 : 0;
-
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
             <section className="container mx-auto px-4 py-6">
