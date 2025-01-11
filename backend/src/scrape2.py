@@ -32,7 +32,7 @@ HTTP_STATUS_OK = 200
 SEPARATOR_LINE = "-" * 50
 OUTPUT_FILE = Path("manifesto_archive.json")
 IMAGES_DIR = Path("images")
-MISSING_ENV_VAR_MSG = "COPERTINE_START_DATE environment variable must be set (format: YYYY-MM-DD)"
+MISSING_ENV_VAR_MSG = "COPERTINE_OLDEST_DATE environment variable must be set (format: YYYY-MM-DD)"
 INVALID_DATE_FORMAT_MSG = "Invalid start date format. Expected YYYY-MM-DD."
 
 
@@ -366,7 +366,7 @@ if __name__ == "__main__":
             oldest_date = most_recent_stored_date + timedelta(days=1)
         else:
             # No editions found, use configured start date as oldest_date
-            oldest_date_str = os.getenv("COPERTINE_START_DATE")
+            oldest_date_str = os.getenv("COPERTINE_OLDEST_DATE")
 
             def validate_start_date():
                 """Validate and parse the start date from environment."""
