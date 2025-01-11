@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { copertineCache } from '@app/lib/cache';
 import { COPERTINEPERPAGE } from '@app/constants';
+import { getWeaviateClient } from '@app/lib/weaviate';
 
 export async function GET(request: NextRequest) {
     try {
@@ -9,22 +10,32 @@ export async function GET(request: NextRequest) {
         const offset = parseInt(searchParams.get('offset') || '0');
         const limit = parseInt(searchParams.get('limit') || String(COPERTINEPERPAGE));
 
-        // Get data from cache (which will fetch from Weaviate if needed)
-        const result = await copertineCache.get(offset);
-        
-        if (!result) {
-            return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
-        }
+        // Get Weaviate connection details from environment
+        const scheme = process.env.WEAVIATE_SCHEME || 'http';
+        const host = process.env.WEAVIATE_HOST || 'localhost:8080';
+        const collection = process.env.WEAVIATE_COLLECTION || 'Copertine';
 
-        return NextResponse.json({
-            data: result.data,
-            pagination: result.pagination,
-            cached: true // For debugging
-        });
+        try {
+            const result = await copertineCache.get(offset);
+            
+            if (!result) {
+                throw new Error('No data received from cache');
+            }
+
+            return NextResponse.json({
+                data: result.data,
+                pagination: result.pagination,
+                cached: true
+            });
+        } catch (error) {
+            const errorMessage = `Failed to connect to Weaviate at ${scheme}://${host} (Collection: ${collection}). ${error instanceof Error ? error.message : 'Unknown error'}`;
+            console.error(errorMessage);
+            return NextResponse.json({ error: errorMessage }, { status: 500 });
+        }
     } catch (error) {
         console.error('Error in API route:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch data' },
+            { error: 'Internal server error while processing request' },
             { status: 500 }
         );
     }
