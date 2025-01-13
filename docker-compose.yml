@@ -1,20 +1,36 @@
 services:
   copfront:
-    build: ./frontend
+    build:
+      context: /home/mema/code/copertinefull/frontend
+    image: copfront:0.1.0
+    container_name: copfront
     environment:
       - NODE_ENV=production
       - PORT=3000
       - HOSTNAME=0.0.0.0
+      - ENV WEAVIATE_SCHEME=http
+      - ENV WEAVIATE_HOST=weaviate:8080
+      - ENV WEAVIATE_COLLECTION=Copertine
     ports:
-      - "3000:3000"
+      - "3737:3000"
     volumes:
-      - ./images:/app/images:ro  # Read-only
+      - /home/mema/code/copertinefull/images:/images:ro  # Read-only
     command: ["node", "server.js"]
+    networks:
+      - mema_network
+      - weaviate_net
     restart: unless-stopped
 
   copback:
-    build: ./backend
+    build:
+      context: /home/mema/code/copertinefull/backend
+    image: copback:0.1.0
+    container_name: copback
     ports:
       - "8383:8383"
     volumes:
-      - ./images:/app/images  # Read-write mount for backend
+      - /home/mema/code/copertinefull/images:/app/images  # Read-write
+    networks:
+      - mema_network
+      - weaviate_net
+    restart: unless-stopped
