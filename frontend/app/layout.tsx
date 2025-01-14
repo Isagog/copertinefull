@@ -4,6 +4,7 @@ import { Inter as FontSans } from "next/font/google";
 import { Suspense } from "react";
 
 import Header from "./components/header/Header";
+import SearchSection from "./components/searchsection/SearchSection";
 import { ThemeProvider } from "../providers/theme-provider";
 import "./globals.css";
 
@@ -30,6 +31,7 @@ export default function RootLayout({
       <body className="antialiased">
         <ThemeProvider defaultTheme="light">
           <Header />
+          <SearchSection />
           <main>
             <Suspense
               fallback={

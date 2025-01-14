@@ -108,7 +108,7 @@ export default function Home() {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-            <section className="container mx-auto px-4 py-6">
+            <section className="max-w-4xl mx-auto px-4 py-6">
                 {error ? (
                     <div className="flex flex-col items-center justify-center min-h-[400px]">
                         <div className="max-w-lg text-center space-y-4">
