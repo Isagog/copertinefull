@@ -1,3 +1,5 @@
+"""FastAPI endpoint for searching Copertine objects."""
+
 from datetime import date
 from typing import List
 
@@ -9,15 +11,26 @@ app = FastAPI()
 
 # Mock function for querying the database (Weaviate)
 def query_copertine(search: str, mode: str) -> List[Copertina]:
-    # Replace this mock with actual Weaviate query logic
+    """Query the database for Copertine objects matching search criteria.
+    
+    Args:
+        search: Search term to match against Copertine objects
+        mode: Search mode, either 'literal' or 'fuzzy'
+        
+    Returns:
+        List of matching Copertina objects
+        
+    Raises:
+        ValueError: If mode is not 'literal' or 'fuzzy'
+    """
     if mode not in ["literal", "fuzzy"]:
         raise ValueError("Invalid mode. Must be 'literal' or 'fuzzy'.")
-    
+
     # Mock response using the actual Copertina model structure
     return [
         Copertina(
             editionId="2024-01-14",
-            editionDateIsoStr=date(2024, 1, 14),
+            editionDateIsoStr=date(2024, 1, 14).isoformat(),
             editionImageFnStr="front-page-2024-01-14.jpg",
             captionStr="Sample caption for the front page",
             kickerStr="Breaking news headline",
