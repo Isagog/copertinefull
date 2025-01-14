@@ -3,12 +3,10 @@
 
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
-import { useTheme } from '../../../providers/theme-provider';
 import type { SearchRequest, SearchResult } from '@/app/types/search';
 import type { CopertineEntry } from '@/app/types/copertine';
 
 export default function SearchSection() {
-  const { theme } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
   const [mode, setMode] = useState<SearchRequest['mode']>('literal');
   const [isSearching, setIsSearching] = useState(false);
