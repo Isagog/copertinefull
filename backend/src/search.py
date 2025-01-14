@@ -6,8 +6,8 @@ from typing import List
 from fastapi import FastAPI, HTTPException, Query
 import weaviate.exceptions
 
-from includes.mytypes import Copertina
-from includes.utils import init_weaviate_client
+from src.includes.mytypes import Copertina
+from src.includes.utils import init_weaviate_client
 
 
 # Create FastAPI lifespan to handle client cleanup
@@ -64,7 +64,7 @@ def query_copertine(client, searchstr: str, mode: str) -> List[Copertina]:
             # Create Copertina object from properties
             copertina = Copertina(**obj.properties)
             copertine.append(copertina)
-        return copertine
+        return copertine  # noqa: TRY300
 
     except weaviate.exceptions.WeaviateQueryError as e:
         error_msg = repr(e) if not str(e) else str(e)

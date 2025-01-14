@@ -101,3 +101,4 @@ docker-compose.yml
 *.seed
 *.bak
 backend/.DS_Store
+.aider*
