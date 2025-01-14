@@ -1,6 +1,7 @@
 // app/api/copertine/route.tsx
 import { NextRequest, NextResponse } from 'next/server';
 import { copertineCache } from '@app/lib/cache';
+import { FASTAPI_URL } from '@/app/lib/constants';
 
 export async function GET(request: NextRequest) {
     try {

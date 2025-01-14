@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { SearchRequest, SearchResponse } from '@/app/types/search';
 
-const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8008';
+import { FASTAPI_URL } from '@/app/lib/constants';
 
 export async function POST(request: NextRequest) {
   try {
