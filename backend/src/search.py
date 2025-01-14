@@ -64,8 +64,7 @@ def query_copertine(client, searchstr: str, mode: str) -> List[Copertina]:
             # Create Copertina object from properties
             copertina = Copertina(**obj.properties)
             copertine.append(copertina)
-        else:
-            return copertine
+        return copertine
 
     except weaviate.exceptions.WeaviateQueryError as e:
         error_msg = repr(e) if not str(e) else str(e)
