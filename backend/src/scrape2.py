@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 HTTP_STATUS_OK = 200
 SEPARATOR_LINE = "-" * 50
 OUTPUT_FILE = Path("manifesto_archive.json")
-IMAGES_DIR = Path("images")
+IMAGES_DIR = Path("/home/mema/code/copertinefull/images")
 MISSING_ENV_VAR_MSG = "COPERTINE_OLDEST_DATE environment variable must be set (format: YYYY-MM-DD)"
 INVALID_DATE_FORMAT_MSG = "Invalid start date format. Expected YYYY-MM-DD."
 
