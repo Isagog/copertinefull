@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { ArrowUpDown } from 'lucide-react';
 import CopertinaCard from './components/copertina/CopertinaCard';
 import type { CopertineEntry, CopertineResponse, PaginationInfo } from './types/copertine';
 import { COPERTINEPERPAGE } from '@/app/constants';
@@ -24,7 +24,6 @@ export default function Home() {
     const [sortDirection, setSortDirection] = React.useState<SortDirection>('desc');
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
-    const [prefetchedPages, setPrefetchedPages] = React.useState<Set<number>>(new Set([0]));
 
     const fetchPage = React.useCallback(async (offset: number) => {
         try {
