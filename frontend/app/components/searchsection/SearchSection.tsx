@@ -1,10 +1,13 @@
+// app/components/searchsection/SearchSection.tsx
 'use client';
 
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 import { useTheme } from '../../../providers/theme-provider';
-import type { SearchRequest } from '@/app/types/search';
+import type { SearchRequest, SearchResult } from '@/app/types/search';
+import type { CopertineEntry } from '@/app/types/copertine';
 
+// We can remove the props interface since we'll use events directly
 export default function SearchSection() {
   const { theme } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,8 +40,18 @@ export default function SearchSection() {
         throw new Error(data.error || 'Search request failed');
       }
       
-      // Handle the search results here
-      console.log('Search results:', data);
+      // Transform search results to match CopertineEntry type
+      const transformedResults: CopertineEntry[] = data.results.map((result: SearchResult) => ({
+        extracted_caption: result.captionStr,
+        kickerStr: result.kickerStr,
+        date: new Date(result.editionDateIsoStr).toLocaleDateString('it-IT'),
+        filename: result.editionImageFnStr,
+        isoDate: result.editionDateIsoStr
+      }));
+
+      // Dispatch the searchResults event directly
+      const event = new CustomEvent('searchResults', { detail: transformedResults });
+      window.dispatchEvent(event);
       
     } catch (error) {
       console.error('Search error:', error);
@@ -47,6 +60,16 @@ export default function SearchSection() {
       setIsSearching(false);
     }
   };
+
+  const handleReset = () => {
+    setSearchTerm('');
+    setError(null);
+    // Dispatch the resetToFullList event directly
+    const event = new CustomEvent('resetToFullList');
+    window.dispatchEvent(event);
+  };
+
+  // Rest of the component remains the same...
 
   return (
     <>
@@ -72,13 +95,20 @@ export default function SearchSection() {
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
                   </div>
                 </div>
-                <div className="sm:self-end">
+                <div className="sm:self-end flex gap-2">
                   <button
                     type="submit"
-                    disabled={isSearching}
-                    className="w-full sm:w-auto px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isSearching || !searchTerm.trim()}
+                    className="flex-1 sm:w-auto px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSearching ? 'Ricerca...' : 'Cerca'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    className="flex-1 sm:w-auto px-6 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors duration-200 font-medium"
+                  >
+                    Lista completa
                   </button>
                 </div>
               </div>
