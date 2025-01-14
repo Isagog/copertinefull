@@ -1,22 +1,24 @@
 'use client';
 
-// app/components/searchsection/SearchSection.tsx
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 import { useTheme } from '../../../providers/theme-provider';
-import type { SearchStyle } from '@/app/types/search';
+import type { SearchRequest } from '@/app/types/search';
 
 export default function SearchSection() {
   const { theme } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchStyle, setSearchStyle] = useState<SearchStyle>('literal');
+  const [mode, setMode] = useState<SearchRequest['mode']>('literal');
   const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchTerm.trim()) return;
 
     setIsSearching(true);
+    setError(null);
+
     try {
       const response = await fetch('/api/search', {
         method: 'POST',
@@ -25,19 +27,22 @@ export default function SearchSection() {
         },
         body: JSON.stringify({
           query: searchTerm,
-          style: searchStyle
+          mode: mode
         }),
       });
       
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Search request failed');
+        throw new Error(data.error || 'Search request failed');
       }
       
-      const data = await response.json();
       // Handle the search results here
       console.log('Search results:', data);
+      
     } catch (error) {
       console.error('Search error:', error);
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred');
     } finally {
       setIsSearching(false);
     }
@@ -49,9 +54,7 @@ export default function SearchSection() {
       <div className="w-full bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-4xl mx-auto px-4 py-6">
           <form onSubmit={handleSearch} className="space-y-6">
-            {/* Search input and style selector */}
             <div className="flex flex-col gap-4">
-              {/* Search input with button */}
               <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex-1">
                   <label htmlFor="search" className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -80,7 +83,12 @@ export default function SearchSection() {
                 </div>
               </div>
 
-              {/* Search style selector */}
+              {error && (
+                <div className="text-red-600 text-sm mt-2">
+                  {error}
+                </div>
+              )}
+
               <div className="flex items-center gap-4">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   Tipo di ricerca:
@@ -88,9 +96,9 @@ export default function SearchSection() {
                 <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-1 bg-gray-200 dark:bg-gray-800">
                   <button
                     type="button"
-                    onClick={() => setSearchStyle('literal')}
+                    onClick={() => setMode('literal')}
                     className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                      searchStyle === 'literal'
+                      mode === 'literal'
                         ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400'
                         : 'text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400'
                     }`}
@@ -99,9 +107,9 @@ export default function SearchSection() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSearchStyle('fuzzy')}
+                    onClick={() => setMode('fuzzy')}
                     className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                      searchStyle === 'fuzzy'
+                      mode === 'fuzzy'
                         ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400'
                         : 'text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400'
                     }`}

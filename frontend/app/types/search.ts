@@ -1,18 +1,20 @@
 // app/types/search.ts
-export type SearchStyle = 'literal' | 'fuzzy';
 
 export interface SearchRequest {
-  query: string;
-  style: SearchStyle;
+  query: string;   // The search term
+  mode: 'literal' | 'fuzzy';  // Search mode matching FastAPI
+}
+
+export interface SearchResult {
+  testataName: string;
+  editionId: string;
+  editionDateIsoStr: string;
+  editionImageFnStr: string;
+  captionStr: string;
+  kickerStr: string;
 }
 
 export interface SearchResponse {
-  results: Array<{
-    filename: string;
-    extracted_caption: string;
-    kickerStr: string;
-    isoDate: string;
-    score?: number;
-  }>;
+  results: SearchResult[];
   total: number;
 }
