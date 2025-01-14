@@ -12,11 +12,11 @@ app = FastAPI()
 # Mock function for querying the database (Weaviate)
 def query_copertine(search: str, mode: str) -> List[Copertina]:
     """Query the database for Copertine objects matching search criteria.
-    
+
     Args:
         search: Search term to match against Copertine objects
         mode: Search mode, either 'literal' or 'fuzzy'
-        
+
     Returns:
         List of matching Copertina objects
         
@@ -44,7 +44,7 @@ async def get_copertine(
 ):
     """
     Fetch copertine objects based on a search term and mode.
-    
+
     The response will include front page entries with their edition IDs, 
     dates, images, captions, and kicker text.
     """
