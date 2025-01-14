@@ -48,6 +48,11 @@ export default function Home() {
     // Effect for handling search results and reset
     React.useEffect(() => {
         const handleSearchResults = (event: CustomEvent<CopertineEntry[]>) => {
+            console.log('Handling search results:', {
+                resultCount: event.detail.length,
+                sampleResults: event.detail.slice(0, 2)
+            });
+            
             setCopertine(event.detail);
             setOriginalOrder(event.detail);
             setIsSearchResult(true);
@@ -55,18 +60,18 @@ export default function Home() {
             setPagination({
                 total: event.detail.length,
                 offset: 0,
-                limit: event.detail.length,
-                hasMore: false
+                limit: COPERTINEPERPAGE,  // Keep the original page size
+                hasMore: event.detail.length > COPERTINEPERPAGE
             });
         };
-
+    
         const handleResetToFullList = () => {
             fetchPage(0);
         };
-
+    
         window.addEventListener('searchResults', handleSearchResults as EventListener);
         window.addEventListener('resetToFullList', handleResetToFullList as EventListener);
-
+    
         return () => {
             window.removeEventListener('searchResults', handleSearchResults as EventListener);
             window.removeEventListener('resetToFullList', handleResetToFullList as EventListener);

@@ -7,7 +7,6 @@ import { useTheme } from '../../../providers/theme-provider';
 import type { SearchRequest, SearchResult } from '@/app/types/search';
 import type { CopertineEntry } from '@/app/types/copertine';
 
-// We can remove the props interface since we'll use events directly
 export default function SearchSection() {
   const { theme } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,6 +20,7 @@ export default function SearchSection() {
 
     setIsSearching(true);
     setError(null);
+    console.log('Starting search with:', { searchTerm, mode });
 
     try {
       const response = await fetch('/api/search', {
@@ -35,9 +35,20 @@ export default function SearchSection() {
       });
       
       const data = await response.json();
+      console.log('Search API response:', {
+        status: response.status,
+        ok: response.ok,
+        resultCount: data.results?.length,
+        sampleResults: data.results?.slice(0, 2)
+      });
       
       if (!response.ok) {
         throw new Error(data.error || 'Search request failed');
+      }
+
+      if (!Array.isArray(data.results)) {
+        console.error('Unexpected response format:', data);
+        throw new Error('Unexpected response format from search service');
       }
       
       // Transform search results to match CopertineEntry type
@@ -49,9 +60,20 @@ export default function SearchSection() {
         isoDate: result.editionDateIsoStr
       }));
 
-      // Dispatch the searchResults event directly
+      console.log('Transformed results:', {
+        count: transformedResults.length,
+        sample: transformedResults.slice(0, 2)
+      });
+
+      // Even if we get zero results, we should still dispatch the event
+      // This will show an empty state rather than falling back to the full list
       const event = new CustomEvent('searchResults', { detail: transformedResults });
       window.dispatchEvent(event);
+      
+      // If no results were found, show a message to the user
+      if (transformedResults.length === 0) {
+        setError(`Nessun risultato trovato per "${searchTerm}"`);
+      }
       
     } catch (error) {
       console.error('Search error:', error);
@@ -64,12 +86,9 @@ export default function SearchSection() {
   const handleReset = () => {
     setSearchTerm('');
     setError(null);
-    // Dispatch the resetToFullList event directly
     const event = new CustomEvent('resetToFullList');
     window.dispatchEvent(event);
   };
-
-  // Rest of the component remains the same...
 
   return (
     <>
