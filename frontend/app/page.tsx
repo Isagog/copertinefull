@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { ChevronUp, ChevronDown } from 'lucide-react';
 import CopertinaCard from './components/copertina/CopertinaCard';
 import PaginationControls from './components/PaginationControls';
 import type { CopertineEntry, CopertineResponse, PaginationInfo } from './types/copertine';
