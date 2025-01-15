@@ -38,9 +38,6 @@ def init_weaviate_client() -> weaviate.WeaviateClient:
                 grpc_host=os.getenv("COP_WEAVIATE_URL"),
                 grpc_port=50051,
                 grpc_secure=False,
-                auth_credentials=weaviate.auth.AuthApiKey(
-                    api_key=os.getenv("WEAVIATE_API_KEY"),
-                ),
             )
     except Exception as e:
         error_message = "Failed to initialize Weaviate client"
