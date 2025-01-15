@@ -5,7 +5,7 @@ x-logging: &default-logging
     max-file: "7"
 
 services:
-  copback:
+   copback:
     build:
       context: /home/mema/code/copertinefull/backend
       dockerfile: Dockerfile
@@ -25,9 +25,10 @@ services:
     networks:
       - weaviate_net
     command: >
-      uvicorn src.search:app
-      --host 0.0.0.0 
+      python -m uvicorn src.search:app
+      --host 0.0.0.0
       --port 8008
+    #entrypoint: ["tail", "-f", "/dev/null"]
     depends_on:
       - weaviate
     logging: *default-logging
