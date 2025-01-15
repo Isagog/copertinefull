@@ -17,9 +17,10 @@ RUN curl -sSL https://install.python-poetry.org | python3 - && \
 # Set up working directory
 WORKDIR /app
 
-# Copy project files
+# Copy only necessary project files
 COPY pyproject.toml poetry.lock ./
-COPY src/ ./src/
+COPY src/search.py ./src/
+COPY src/includes/ ./src/includes/
 
 # Install dependencies
 RUN poetry config virtualenvs.create false && \
@@ -28,9 +29,10 @@ RUN poetry config virtualenvs.create false && \
 # Stage 2: Runtime
 FROM python:3.11-slim AS runtime
 
-# Install runtime dependencies
+# Install runtime dependencies and tree
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgcc1 \
+    tree \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -44,10 +46,10 @@ WORKDIR /app
 
 # Copy Python packages and application
 COPY --chown=nonroot:nonroot --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
-COPY --chown=nonroot:nonroot --from=builder /app/ ./
+COPY --chown=nonroot:nonroot --from=builder /app/src/ ./src/
 
-# Set Python path to recognize the src module
-ENV PYTHONPATH="/app:$PYTHONPATH" \
-    PATH="/usr/local/bin:$PATH"
+# Set environment variables
+ENV PYTHONPATH="/app" \
+    PATH="/usr/local/bin:/usr/local/sbin:/usr/bin:/sbin:/bin"
 
 EXPOSE 8008
