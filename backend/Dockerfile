@@ -1,43 +1,53 @@
 # Stage 1: Build
 FROM python:3.11-slim AS builder
-
-# Set environment variables for Poetry
-ENV POETRY_VERSION=1.7.2 \
-    POETRY_VIRTUALENVS_CREATE=false \
+ENV POETRY_VERSION=2.0.1 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies and Poetry
-RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential && \
-    curl -sSL https://install.python-poetry.org | python3 - && \
-    apt-get purge -y --auto-remove curl && \
-    rm -rf /var/lib/apt/lists/*
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Install poetry
+RUN curl -sSL https://install.python-poetry.org | python3 - && \
+    mv /root/.local/bin/poetry /usr/local/bin/poetry
+
+# Set up working directory
 WORKDIR /app
 
-# Copy only Poetry files to leverage Docker cache
+# Copy project files
 COPY pyproject.toml poetry.lock ./
+COPY src/ ./src/
 
 # Install dependencies
-RUN poetry install --no-dev --no-interaction --no-ansi
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi
 
 # Stage 2: Runtime
 FROM python:3.11-slim AS runtime
 
-# Create non-privileged user and setup the environment
-RUN useradd -m nonroot && \
-    mkdir /app && chown nonroot:nonroot /app && \
-    mkdir /images && chown nonroot:nonroot /images
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgcc1 \
+    && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user
+RUN useradd -m nonroot && \
+    mkdir -p /app /images && \
+    chown -R nonroot:nonroot /app /images
+
+# Switch to non-root user
 USER nonroot
 WORKDIR /app
 
-# Copy the application code
-COPY --chown=nonroot:nonroot src/ ./src/
+# Copy Python packages and application
+COPY --chown=nonroot:nonroot --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
+COPY --chown=nonroot:nonroot --from=builder /app/ ./
 
-# Copy installed dependencies from the builder stage
-COPY --from=builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
+# Set Python path to recognize the src module
+ENV PYTHONPATH="/app:$PYTHONPATH" \
+    PATH="/usr/local/bin:$PATH"
 
-# Expose application port
 EXPOSE 8008

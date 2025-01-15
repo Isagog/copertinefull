@@ -7,18 +7,19 @@ x-logging: &default-logging
 services:
   copback:
     build:
-      context: .
+      context: /home/mema/code/copertinefull/backend
       dockerfile: Dockerfile
     image: copback:0.1.0
+    container_name: copback
     environment:
-      COP_WEAVIATE_URL: "localhost"
-      COP_WEAVIATE_API_KEY: "your_weaviate_api_key"
-      COP_COPERTINE_COLLNAME: "Copertine"
-      COP_VISION_MODELNAME: "gpt-4o-mini"
-      COP_OLDEST_DATE: "2013-03-27"
-      COP_SAVE_TO_JSON: "false"
+      - COP_WEAVIATE_URL=weaviate
+      - COP_WEAVIATE_API_KEY=your_weaviate_api_key
+      - COP_COPERTINE_COLLNAME=Copertine
+      - COP_VISION_MODELNAME=gpt-4o-mini
+      - COP_OLDEST_DATE=2013-03-27
+      - COP_SAVE_TO_JSON=false
     volumes:
-      - fullpath/images:/images
+      - /home/mema/code/copertinefull/images:/images:ro  # Read-only
     ports:
       - "8008:8008"
     networks:
