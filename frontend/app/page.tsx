@@ -152,19 +152,17 @@ export default function Home() {
                     <div>
                         {/* Combined Sort and Pagination Controls */}
                         <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
-                            {/* Pagination Controls */}
-                            {!isSearchResult && (
-                                <PaginationControls
-                                    currentPage={Math.floor(pagination.offset / pagination.limit) + 1}
-                                    totalPages={Math.ceil(pagination.total / pagination.limit)}
-                                    totalItems={pagination.total}
-                                    onPageChange={(newPage) => {
-                                        const newOffset = (newPage - 1) * pagination.limit;
-                                        fetchPage(newOffset);
-                                    }}
-                                    isLoading={isLoading}
-                                />
-                            )}
+                            {/* Pagination Controls - Now shown for both search and normal results */}
+                            <PaginationControls
+                                currentPage={Math.floor(pagination.offset / pagination.limit) + 1}
+                                totalPages={Math.ceil(pagination.total / pagination.limit)}
+                                totalItems={pagination.total}
+                                onPageChange={(newPage) => {
+                                    const newOffset = (newPage - 1) * pagination.limit;
+                                    fetchPage(newOffset);
+                                }}
+                                isLoading={isLoading}
+                            />
 
                             {/* Sort Controls */}
                             <div className="flex gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -175,7 +173,15 @@ export default function Home() {
                                     } ${sortField === 'relevance' ? 'bg-blue-100 dark:bg-gray-700' : ''}`}
                                     disabled={!isSearchResult}
                                 >
-                                    Rilevanza {sortField === 'relevance' && <ArrowUpDown className="h-4 w-4" />}
+                                    Rilevanza 
+                                    <div className="flex flex-col">
+                                        <ChevronUp className={`h-3 w-3 -mb-1 ${
+                                            sortField === 'relevance' && sortDirection === 'asc' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
+                                        }`} />
+                                        <ChevronDown className={`h-3 w-3 ${
+                                            sortField === 'relevance' && sortDirection === 'desc' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
+                                        }`} />
+                                    </div>
                                 </button>
                                 <button 
                                     onClick={() => handleSort('date')}
