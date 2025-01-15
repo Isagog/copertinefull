@@ -4,6 +4,7 @@
 import React from 'react';
 import { ArrowUpDown } from 'lucide-react';
 import CopertinaCard from './components/copertina/CopertinaCard';
+import PaginationControls from './components/PaginationControls';
 import type { CopertineEntry, CopertineResponse, PaginationInfo } from './types/copertine';
 import { COPERTINEPERPAGE } from '@/app/constants';
 
@@ -59,7 +60,7 @@ export default function Home() {
             setPagination({
                 total: event.detail.length,
                 offset: 0,
-                limit: COPERTINEPERPAGE,  // Keep the original page size
+                limit: COPERTINEPERPAGE,
                 hasMore: event.detail.length > COPERTINEPERPAGE
             });
         };
@@ -146,8 +147,22 @@ export default function Home() {
                     </div>
                 ) : (
                     <div>
+                        {/* Pagination Controls */}
+                        {!isSearchResult && (
+                            <PaginationControls
+                                currentPage={Math.floor(pagination.offset / pagination.limit) + 1}
+                                totalPages={Math.ceil(pagination.total / pagination.limit)}
+                                totalItems={pagination.total}
+                                onPageChange={(newPage) => {
+                                    const newOffset = (newPage - 1) * pagination.limit;
+                                    fetchPage(newOffset);
+                                }}
+                                isLoading={isLoading}
+                            />
+                        )}
+
                         {/* Sort Controls */}
-                        <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+                        <div className="mt-4 mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
                             <div className="flex justify-between items-center">
                                 <div className="flex gap-4">
                                     <button 
@@ -172,8 +187,6 @@ export default function Home() {
                                         Didascalia {sortField === 'extracted_caption' && <ArrowUpDown className="h-4 w-4" />}
                                     </button>
                                 </div>
-                                
-                                {/* Rest of the existing controls... */}
                             </div>
                         </div>
 
@@ -184,7 +197,6 @@ export default function Home() {
                             ))}
                         </div>
 
-                        {/* Pagination controls... */}
                     </div>
                 )}
             </section>
