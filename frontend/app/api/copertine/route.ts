@@ -6,9 +6,20 @@ import { FASTAPI_URL } from '@/app/lib/constants';
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams;
-        const offset = parseInt(searchParams.get('offset') || '0')
+        const offset = parseInt(searchParams.get('offset') || '0');
+        const query = searchParams.get('q');
 
-        // Get Weaviate connection details from environment
+        // If there's a search query, forward to FastAPI
+        if (query) {
+            const searchResponse = await fetch(`${FASTAPI_URL}/search?q=${encodeURIComponent(query)}`);
+            if (!searchResponse.ok) {
+                throw new Error('Search API request failed');
+            }
+            const searchResults = await searchResponse.json();
+            return NextResponse.json(searchResults);
+        }
+
+        // Otherwise, get from cache/Weaviate
         const scheme = process.env.WEAVIATE_SCHEME || 'http';
         const host = process.env.WEAVIATE_HOST || 'localhost:8080';
         const collection = process.env.WEAVIATE_COLLECTION || 'Copertine';
