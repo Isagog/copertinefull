@@ -147,46 +147,49 @@ export default function Home() {
                     </div>
                 ) : (
                     <div>
-                        {/* Pagination Controls */}
-                        {!isSearchResult && (
-                            <PaginationControls
-                                currentPage={Math.floor(pagination.offset / pagination.limit) + 1}
-                                totalPages={Math.ceil(pagination.total / pagination.limit)}
-                                totalItems={pagination.total}
-                                onPageChange={(newPage) => {
-                                    const newOffset = (newPage - 1) * pagination.limit;
-                                    fetchPage(newOffset);
-                                }}
-                                isLoading={isLoading}
-                            />
-                        )}
+                        {/* Combined Sort and Pagination Controls */}
+                        <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
+                            {/* Pagination Controls */}
+                            {!isSearchResult && (
+                                <PaginationControls
+                                    currentPage={Math.floor(pagination.offset / pagination.limit) + 1}
+                                    totalPages={Math.ceil(pagination.total / pagination.limit)}
+                                    totalItems={pagination.total}
+                                    onPageChange={(newPage) => {
+                                        const newOffset = (newPage - 1) * pagination.limit;
+                                        fetchPage(newOffset);
+                                    }}
+                                    isLoading={isLoading}
+                                />
+                            )}
 
-                        {/* Sort Controls */}
-                        <div className="mt-4 mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
-                            <div className="flex justify-between items-center">
-                                <div className="flex gap-4">
-                                    <button 
-                                        onClick={() => handleSort('relevance')}
-                                        className={`flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors ${
-                                            !isSearchResult ? 'opacity-50 cursor-not-allowed' : ''
-                                        }`}
-                                        disabled={!isSearchResult}
-                                    >
-                                        Rilevanza {sortField === 'relevance' && <ArrowUpDown className="h-4 w-4" />}
-                                    </button>
-                                    <button 
-                                        onClick={() => handleSort('date')}
-                                        className="flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-                                    >
-                                        Data {sortField === 'date' && <ArrowUpDown className="h-4 w-4" />}
-                                    </button>
-                                    <button 
-                                        onClick={() => handleSort('extracted_caption')}
-                                        className="flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-                                    >
-                                        Didascalia {sortField === 'extracted_caption' && <ArrowUpDown className="h-4 w-4" />}
-                                    </button>
-                                </div>
+                            {/* Sort Controls */}
+                            <div className="flex gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <button 
+                                    onClick={() => handleSort('relevance')}
+                                    className={`flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-gray-700 rounded-md transition-colors ${
+                                        !isSearchResult ? 'opacity-50 cursor-not-allowed' : ''
+                                    } ${sortField === 'relevance' ? 'bg-blue-100 dark:bg-gray-700' : ''}`}
+                                    disabled={!isSearchResult}
+                                >
+                                    Rilevanza {sortField === 'relevance' && <ArrowUpDown className="h-4 w-4" />}
+                                </button>
+                                <button 
+                                    onClick={() => handleSort('date')}
+                                    className={`flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-gray-700 rounded-md transition-colors ${
+                                        sortField === 'date' ? 'bg-blue-100 dark:bg-gray-700' : ''
+                                    }`}
+                                >
+                                    Data {sortField === 'date' && <ArrowUpDown className="h-4 w-4" />}
+                                </button>
+                                <button 
+                                    onClick={() => handleSort('extracted_caption')}
+                                    className={`flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-gray-700 rounded-md transition-colors ${
+                                        sortField === 'extracted_caption' ? 'bg-blue-100 dark:bg-gray-700' : ''
+                                    }`}
+                                >
+                                    Didascalia {sortField === 'extracted_caption' && <ArrowUpDown className="h-4 w-4" />}
+                                </button>
                             </div>
                         </div>
 
