@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowUpDown } from 'lucide-react';
+import { ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import CopertinaCard from './components/copertina/CopertinaCard';
 import PaginationControls from './components/PaginationControls';
 import type { CopertineEntry, CopertineResponse, PaginationInfo } from './types/copertine';
@@ -12,6 +12,7 @@ type SortField = 'date' | 'extracted_caption' | 'relevance';
 type SortDirection = 'asc' | 'desc';
 
 export default function Home() {
+    // State declarations
     const [copertine, setCopertine] = React.useState<CopertineEntry[]>([]);
     const [originalOrder, setOriginalOrder] = React.useState<CopertineEntry[]>([]);
     const [isSearchResult, setIsSearchResult] = React.useState(false);
@@ -26,6 +27,7 @@ export default function Home() {
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
+    // Fetch page data
     const fetchPage = React.useCallback(async (offset: number) => {
         try {
             setIsLoading(true);
@@ -45,7 +47,7 @@ export default function Home() {
         }
     }, [pagination.limit]);
 
-    // Effect for handling search results and reset
+    // Handle search results and reset
     React.useEffect(() => {
         const handleSearchResults = (event: CustomEvent<CopertineEntry[]>) => {
             console.log('Handling search results:', {
@@ -83,6 +85,7 @@ export default function Home() {
         fetchPage(0);
     }, [fetchPage]);
 
+    // Sort handling
     const handleSort = (field: SortField) => {
         if (field === 'relevance' && !isSearchResult) {
             return; // Don't sort by relevance if not a search result
@@ -96,8 +99,8 @@ export default function Home() {
         }
     };
 
+    // Sort copertine based on current field and direction
     const sortedCopertine = React.useMemo(() => {
-        // If sorting by relevance and it's a search result, return original order
         if (sortField === 'relevance' && isSearchResult) {
             return originalOrder;
         }
@@ -113,7 +116,6 @@ export default function Home() {
                 case 'extracted_caption':
                     return a.extracted_caption.localeCompare(b.extracted_caption) * modifier;
                 case 'relevance':
-                    // This case should never be reached because of the earlier check
                     return 0;
                 default:
                     return 0;
@@ -131,7 +133,8 @@ export default function Home() {
                                 Unable to Connect to Database
                             </div>
                             <div className="text-gray-600 dark:text-gray-400">
-                                {error.includes('Weaviate') ? error : 'The Weaviate database is currently unavailable. Please check your connection and try again.'}
+                                {error.includes('Weaviate') ? error : 
+                                 'The Weaviate database is currently unavailable. Please check your connection and try again.'}
                             </div>
                         </div>
                     </div>
@@ -180,7 +183,15 @@ export default function Home() {
                                         sortField === 'date' ? 'bg-blue-100 dark:bg-gray-700' : ''
                                     }`}
                                 >
-                                    Data {sortField === 'date' && <ArrowUpDown className="h-4 w-4" />}
+                                    Data 
+                                    <div className="flex flex-col">
+                                        <ChevronUp className={`h-3 w-3 -mb-1 ${
+                                            sortField === 'date' && sortDirection === 'asc' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
+                                        }`} />
+                                        <ChevronDown className={`h-3 w-3 ${
+                                            sortField === 'date' && sortDirection === 'desc' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
+                                        }`} />
+                                    </div>
                                 </button>
                                 <button 
                                     onClick={() => handleSort('extracted_caption')}
@@ -188,7 +199,15 @@ export default function Home() {
                                         sortField === 'extracted_caption' ? 'bg-blue-100 dark:bg-gray-700' : ''
                                     }`}
                                 >
-                                    Didascalia {sortField === 'extracted_caption' && <ArrowUpDown className="h-4 w-4" />}
+                                    Titolo 
+                                    <div className="flex flex-col">
+                                        <ChevronUp className={`h-3 w-3 -mb-1 ${
+                                            sortField === 'extracted_caption' && sortDirection === 'asc' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
+                                        }`} />
+                                        <ChevronDown className={`h-3 w-3 ${
+                                            sortField === 'extracted_caption' && sortDirection === 'desc' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
+                                        }`} />
+                                    </div>
                                 </button>
                             </div>
                         </div>
@@ -199,7 +218,6 @@ export default function Home() {
                                 <CopertinaCard key={copertina.filename} copertina={copertina} />
                             ))}
                         </div>
-
                     </div>
                 )}
             </section>
