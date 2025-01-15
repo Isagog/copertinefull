@@ -1,0 +1,33 @@
+x-logging: &default-logging
+  driver: "local"
+  options:
+    max-size: "1m"
+    max-file: "7"
+
+services:
+  copback:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: copback:0.1.0
+    environment:
+      COP_WEAVIATE_URL: "localhost"
+      COP_WEAVIATE_API_KEY: "your_weaviate_api_key"
+      COP_COPERTINE_COLLNAME: "Copertine"
+      COP_VISION_MODELNAME: "gpt-4o-mini"
+      COP_OLDEST_DATE: "2013-03-27"
+      COP_SAVE_TO_JSON: "false"
+    volumes:
+      - fullpath/images:/images
+    ports:
+      - "8008:8008"
+    networks:
+      - weaviate_net
+    command: >
+      uvicorn src.search:app
+      --host 0.0.0.0 
+      --port 8008
+    depends_on:
+      - weaviate
+    logging: *default-logging
+    restart: unless-stopped
