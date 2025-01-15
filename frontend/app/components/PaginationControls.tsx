@@ -28,44 +28,44 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
       
       <div className="flex items-center gap-1">
         <Button
-          variant="outline"
+          variant="blue"
           size="icon"
           onClick={() => onPageChange(1)}
           disabled={currentPage === 1 || isLoading}
-          className="w-8 h-8 bg-white hover:bg-blue-100 dark:bg-gray-800"
+          className="w-8 h-8"
           title="Prima pagina"
         >
           <ChevronFirst className="h-4 w-4" />
         </Button>
         
         <Button
-          variant="outline"
+          variant="blue"
           size="icon"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1 || isLoading}
-          className="w-8 h-8 bg-white hover:bg-blue-100 dark:bg-gray-800"
+          className="w-8 h-8"
           title="Pagina precedente"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
         
         <Button
-          variant="outline"
+          variant="blue"
           size="icon"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages || isLoading}
-          className="w-8 h-8 bg-white hover:bg-blue-100 dark:bg-gray-800"
+          className="w-8 h-8"
           title="Pagina successiva"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
         
         <Button
-          variant="outline"
+          variant="blue"
           size="icon"
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages || isLoading}
-          className="w-8 h-8 bg-white hover:bg-blue-100 dark:bg-gray-800"
+          className="w-8 h-8"
           title="Ultima pagina"
         >
           <ChevronLast className="h-4 w-4" />
