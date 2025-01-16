@@ -1,8 +1,7 @@
 // app/api/search/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import type { SearchRequest, SearchResponse } from '@/app/types/search';
-
-import { FASTAPI_URL } from '@/app/lib/constants';
+import { API } from '@/app/lib/config/constants';
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,7 +9,7 @@ export async function POST(request: NextRequest) {
     console.log('Search request received:', searchParams);
     
     // Create URL with search parameters
-    const url = new URL(`${FASTAPI_URL}/api/v1/copertine`);
+    const url = new URL(`${API.FASTAPI_URL}/api/v1/copertine`);
     url.searchParams.append('search', searchParams.query);
     url.searchParams.append('mode', searchParams.mode);
     
@@ -56,7 +55,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(searchResponse);
       
     } catch (error) {
-      const errorMessage = `Failed to fetch from FastAPI backend at ${FASTAPI_URL}. ${error instanceof Error ? error.message : 'Unknown error'}`;
+      const errorMessage = `Failed to fetch from FastAPI backend at ${API.FASTAPI_URL}. ${error instanceof Error ? error.message : 'Unknown error'}`;
       console.error('Search API error details:', {
         error,
         message: errorMessage,
