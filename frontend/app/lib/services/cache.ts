@@ -1,15 +1,8 @@
-// app/lib/cache.ts
+// app/lib/services/cache.ts
 import { CopertineEntry, PaginationInfo } from '@/app/types/copertine';
-import { getWeaviateClient } from '@/app/lib/weaviate';
+import { getWeaviateClient } from './weaviate';
 import { WeaviateGetResponse } from '@/app/types/weaviate';
-import { 
-    COPERTINEPERPAGE,
-    PREFETCH_PAGES,
-    CACHE_INVALIDATION_HOUR,
-    CACHE_INVALIDATION_MINUTE,
-    CACHE_REFRESH_HOUR,
-    CACHE_REFRESH_MINUTE
-} from '@/app/constants';
+import { PAGINATION, CACHE } from '../config/constants';
 
 interface CacheEntry {
     data: CopertineEntry[];
@@ -33,10 +26,10 @@ interface WeaviateCopertineItem {
 class CopertineCache {
     private static instance: CopertineCache;
     private cache: PageCache = {};
+    private lastCacheRefresh: Date | null = null;
     private prefetchPromise: Promise<void> | null = null;
 
     private constructor() {
-        // Start background prefetch when cache is instantiated
         this.startBackgroundPrefetch();
     }
 
@@ -48,23 +41,27 @@ class CopertineCache {
     }
 
     private shouldInvalidateCache(): boolean {
+        if (!this.lastCacheRefresh) return true;
+
         const now = new Date();
-        const invalidationTime = new Date(
+        const todayUpdate = new Date(
             now.getFullYear(),
             now.getMonth(),
             now.getDate(),
-            CACHE_INVALIDATION_HOUR,
-            CACHE_INVALIDATION_MINUTE
-        );
-        const refreshTime = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate(),
-            CACHE_REFRESH_HOUR,
-            CACHE_REFRESH_MINUTE
+            CACHE.UPDATE_HOUR,
+            CACHE.UPDATE_MINUTE
         );
 
-        return now >= invalidationTime && now <= refreshTime;
+        const cacheDate = new Date(this.lastCacheRefresh);
+        const cacheUpdateTime = new Date(
+            cacheDate.getFullYear(),
+            cacheDate.getMonth(),
+            cacheDate.getDate(),
+            CACHE.UPDATE_HOUR,
+            0  // Minutes set to 0 for the actual update time
+        );
+
+        return now >= todayUpdate && this.lastCacheRefresh < cacheUpdateTime;
     }
 
     private async fetchPageData(offset: number): Promise<CacheEntry> {
@@ -85,11 +82,10 @@ class CopertineCache {
                 path: ["editionDateIsoStr"], 
                 order: "desc" 
             }])
-            .withLimit(COPERTINEPERPAGE)
+            .withLimit(PAGINATION.ITEMS_PER_PAGE)
             .withOffset(offset)
             .do() as WeaviateGetResponse;
 
-        // Get total count
         const countResult = await client.graphql
             .aggregate()
             .withClassName('Copertine')
@@ -111,8 +107,8 @@ class CopertineCache {
             pagination: {
                 total: totalCount,
                 offset,
-                limit: COPERTINEPERPAGE,
-                hasMore: offset + COPERTINEPERPAGE < totalCount
+                limit: PAGINATION.ITEMS_PER_PAGE,
+                hasMore: offset + PAGINATION.ITEMS_PER_PAGE < totalCount
             },
             timestamp: Date.now()
         };
@@ -124,13 +120,13 @@ class CopertineCache {
         this.prefetchPromise = (async () => {
             console.log('Starting background prefetch...');
             try {
-                // Prefetch pages sequentially to avoid overwhelming Weaviate
-                for (let i = 0; i < PREFETCH_PAGES; i++) {
-                    const offset = i * COPERTINEPERPAGE;
+                for (let i = 0; i < PAGINATION.PREFETCH_PAGES; i++) {
+                    const offset = i * PAGINATION.ITEMS_PER_PAGE;
                     if (!this.isValid(offset)) {
                         const data = await this.fetchPageData(offset);
                         this.set(offset, data);
-                        console.log(`Prefetched page ${i + 1}/${PREFETCH_PAGES}`);
+                        console.log(`Prefetched page ${i + 1}/${PAGINATION.PREFETCH_PAGES}`);
+                        this.lastCacheRefresh = new Date();
                     }
                 }
                 console.log('Background prefetch completed');
@@ -145,20 +141,7 @@ class CopertineCache {
     isValid(offset: number): boolean {
         const cacheEntry = this.cache[offset];
         if (!cacheEntry) return false;
-
-        if (this.shouldInvalidateCache()) {
-            return false;
-        }
-
-        const now = new Date();
-        const cacheDate = new Date(cacheEntry.timestamp);
-        if (cacheDate.getDate() !== now.getDate() ||
-            cacheDate.getMonth() !== now.getMonth() ||
-            cacheDate.getFullYear() !== now.getFullYear()) {
-            return false;
-        }
-
-        return true;
+        return !this.shouldInvalidateCache();
     }
 
     async get(offset: number): Promise<CacheEntry | null> {
@@ -180,11 +163,12 @@ class CopertineCache {
             ...entry,
             timestamp: Date.now()
         };
+        this.lastCacheRefresh = new Date();
     }
 
     clear(): void {
         this.cache = {};
-        // Restart background prefetch after clearing
+        this.lastCacheRefresh = null;
         this.startBackgroundPrefetch();
     }
 }

@@ -1,7 +1,7 @@
 // app/api/copertine/route.tsx
 import { NextRequest, NextResponse } from 'next/server';
-import { copertineCache } from '@app/lib/cache';
-import { FASTAPI_URL } from '@/app/lib/constants';
+import { copertineCache } from '@/app/lib/services/cache';
+import { API } from '@/app/lib/config/constants';
 
 export async function GET(request: NextRequest) {
     try {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
         // If there's a search query, forward to FastAPI
         if (query) {
-            const searchResponse = await fetch(`${FASTAPI_URL}/search?q=${encodeURIComponent(query)}`);
+            const searchResponse = await fetch(`${API.FASTAPI_URL}/search?q=${encodeURIComponent(query)}`);
             if (!searchResponse.ok) {
                 throw new Error('Search API request failed');
             }
