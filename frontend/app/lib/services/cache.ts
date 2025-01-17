@@ -41,28 +41,23 @@ class CopertineCache {
     }
 
     private shouldInvalidateCache(): boolean {
+        // If the cache has never been populated, force a load.
         if (!this.lastCacheRefresh) return true;
-
+      
         const now = new Date();
-        const todayUpdate = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate(),
-            CACHE.UPDATE_HOUR,
-            CACHE.UPDATE_MINUTE
-        );
-
         const cacheDate = new Date(this.lastCacheRefresh);
-        const cacheUpdateTime = new Date(
-            cacheDate.getFullYear(),
-            cacheDate.getMonth(),
-            cacheDate.getDate(),
-            CACHE.UPDATE_HOUR,
-            0  // Minutes set to 0 for the actual update time
-        );
-
-        return now >= todayUpdate && this.lastCacheRefresh < cacheUpdateTime;
-    }
+      
+        // If we've moved to a new day, check if we are past the update hour.
+        if (now.getDate() !== cacheDate.getDate()) {
+          // If it's already past 05:00 (or whatever hour) on the new day,
+          // let's invalidate the cache if we haven't already.
+          if (now.getHours() >= CACHE.UPDATE_HOUR) {
+            return true;
+          }
+        }
+      
+        return false; // Otherwise, keep it valid.
+      }
 
     private async fetchPageData(offset: number): Promise<CacheEntry> {
         const client = getWeaviateClient();

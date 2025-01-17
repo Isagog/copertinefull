@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { copertineCache } from '@/app/lib/services/cache';
 import { API } from '@/app/lib/config/constants';
 
+export const revalidate = 0;
+
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams;
