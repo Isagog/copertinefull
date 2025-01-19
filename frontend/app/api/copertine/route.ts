@@ -84,7 +84,10 @@ export async function GET(request: NextRequest) {
             };
 
             // Store in cache for future requests
-            await copertineCache.set(offset, response);
+            await copertineCache.set(offset, {
+                ...response,
+                timestamp: Date.now()
+            });
 
             return NextResponse.json(response);
 
