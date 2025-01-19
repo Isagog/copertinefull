@@ -60,20 +60,74 @@ docker-compose up -d
 
 Add to your Nginx configuration:
 ```nginx
-location /images {
-    alias /path/to/images;
-}
+    location /images/ {
+        alias /home/mema/code/copertinefull/images/;
+        http2_push_preload on;
+        autoindex off;
+   
+        # Aggressive caching for images since they never change
+        expires max;
+        add_header Cache-Control "public, max-age=31536000, immutable";
 
-location /copertine {
-    proxy_pass http://localhost:3737;
-}
+        # Performance optimizations
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        aio threads;
+        directio 512;  # For files larger than 512 bytes
+
+        # Security headers
+        add_header X-Content-Type-Options "nosniff";
+
+        # Only allow GET and HEAD
+        limit_except GET HEAD {
+            deny all;
+        }
+
+        # Optional: Enable compression for JPEG if not already compressed
+        # gzip on;
+        # gzip_types image/jpeg;
+        # gzip_min_length 1024;
+
+        # Optional but recommended: Cross-Origin settings
+        add_header Access-Control-Allow-Origin "https://dev.isagog.com";
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+        add_header Timing-Allow-Origin "https://dev.isagog.com";
+    }
+
+    location /copertine {
+        proxy_pass http://127.0.0.1:3737;
+        # Basic proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Updated Permissions-Policy with only widely supported features
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()";
+        proxy_redirect off;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
 ```
 
 ### Automated Updates
 
 Add to crontab (runs at 5:00 AM, Tuesday through Sunday):
 ```bash
-0 5 * * 2-7 /path/to/project/scripts/update_copertine.sh
+# scrape the new Il Manifesto edition article (copertine) and save the image on filesystem and the data in weaviate
+0 5 * * 2-7 /home/mema/code/copertinefull/refreshbind.sh  >> /home/mema/code/copertinefull/backend/scrape2.log 2>&1
+```
+where refreshbind.sh is:
+```bash
+#!/bin/bash
+
+# Run the scraping process
+/home/mema/code/copertinefull/backend/.venv/bin/python /home/mema/code/copertinefull/backend/src/scrape2.py
+
+# Restart the container
+/usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ stop copfront
+/usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ start copfront
 ```
 
 The update process:
