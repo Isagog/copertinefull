@@ -1,8 +1,6 @@
 // app/lib/services/cache.ts
 import { CopertineEntry, PaginationInfo } from '@/app/types/copertine';
-import { getWeaviateClient } from './weaviate';
-import { WeaviateGetResponse } from '@/app/types/weaviate';
-import { PAGINATION, CACHE } from '../config/constants';
+import { PAGINATION, CACHE} from '../config/constants';
 
 interface CacheEntry {
     data: CopertineEntry[];
@@ -41,55 +39,45 @@ class CopertineCache {
     }
 
     private shouldInvalidateCache(): boolean {
-        // If the cache has never been populated, force a load.
         if (!this.lastCacheRefresh) return true;
       
         const now = new Date();
         const cacheDate = new Date(this.lastCacheRefresh);
       
-        // If we've moved to a new day, check if we are past the update hour.
         if (now.getDate() !== cacheDate.getDate()) {
-          // If it's already past 05:00 (or whatever hour) on the new day,
-          // let's invalidate the cache if we haven't already.
-          if (now.getHours() >= CACHE.UPDATE_HOUR) {
-            return true;
-          }
+            if (now.getHours() >= CACHE.UPDATE_HOUR) {
+                return true;
+            }
         }
       
-        return false; // Otherwise, keep it valid.
-      }
+        return false;
+    }
 
-    private async fetchPageData(offset: number): Promise<CacheEntry> {
-        const client = getWeaviateClient();
-        
-        const result = await client.graphql
-            .get()
-            .withClassName('Copertine')
-            .withFields(`
-                captionStr
-                editionDateIsoStr
-                editionId
-                editionImageFnStr
-                kickerStr
-                testataName
-            `)
-            .withSort([{ 
-                path: ["editionDateIsoStr"], 
-                order: "desc" 
-            }])
-            .withLimit(PAGINATION.ITEMS_PER_PAGE)
-            .withOffset(offset)
-            .do() as WeaviateGetResponse;
+    // app/lib/services/cache.ts
+private async fetchPageData(offset: number): Promise<CacheEntry> {
+    try {
+        const baseUrl = typeof window === 'undefined' 
+            ? process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'  // Server-side
+            : '';  // Client-side (relative URL is fine)
+            
+        const apiUrl = `${baseUrl}/api/copertine?offset=${offset}&limit=${PAGINATION.ITEMS_PER_PAGE}`;
+        console.log('Requesting URL:', apiUrl);
 
-        const countResult = await client.graphql
-            .aggregate()
-            .withClassName('Copertine')
-            .withFields('meta { count }')
-            .do();
+        const response = await fetch(apiUrl);
+        console.log('Response status:', response.status);
 
-        const totalCount = countResult.data.Aggregate.Copertine[0].meta.count;
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
-        const mappedData: CopertineEntry[] = result.data.Get.Copertine.map((item: WeaviateCopertineItem) => ({
+        const result = await response.json();
+        console.log('Received data:', result);
+
+        if (result.cached) {
+            return result;
+        }
+
+        const mappedData: CopertineEntry[] = result.data.map((item: WeaviateCopertineItem) => ({
             extracted_caption: item.captionStr,
             kickerStr: item.kickerStr,
             date: new Date(item.editionDateIsoStr).toLocaleDateString('it-IT'),
@@ -100,14 +88,18 @@ class CopertineCache {
         return {
             data: mappedData,
             pagination: {
-                total: totalCount,
+                total: result.pagination.total,
                 offset,
                 limit: PAGINATION.ITEMS_PER_PAGE,
-                hasMore: offset + PAGINATION.ITEMS_PER_PAGE < totalCount
+                hasMore: offset + PAGINATION.ITEMS_PER_PAGE < result.pagination.total
             },
             timestamp: Date.now()
         };
+    } catch (error) {
+        console.error('Error fetching page data:', error);
+        throw error;
     }
+}
 
     private async startBackgroundPrefetch(): Promise<void> {
         if (this.prefetchPromise) return;
