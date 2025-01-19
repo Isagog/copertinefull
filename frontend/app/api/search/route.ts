@@ -25,9 +25,16 @@ export async function POST(request: NextRequest) {
         next: { revalidate: 0 },
       });
 
+      // Check content type
+      const contentType = response.headers.get('content-type');
+      if (!contentType?.includes('application/json')) {
+        console.error('Unexpected content type:', contentType);
+        const textResponse = await response.text();
+        console.error('Raw non-JSON response:', textResponse);
+        throw new Error(`Unexpected content type: ${contentType}`);
+      }
+
       const data = await response.json();
-      
-      // Log the raw response
       console.log('Raw FastAPI response:', data);
 
       if (!response.ok) {

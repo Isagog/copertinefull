@@ -16,9 +16,22 @@ export async function GET(request: NextRequest) {
         // If there's a search query, forward to FastAPI
         if (query) {
             const searchResponse = await fetch(`${API.FASTAPI_URL}/search?q=${encodeURIComponent(query)}`);
-            if (!searchResponse.ok) {
-                throw new Error('Search API request failed');
+            
+            // Check content type
+            const contentType = searchResponse.headers.get('content-type');
+            if (!contentType?.includes('application/json')) {
+                console.error('Unexpected content type:', contentType);
+                const textResponse = await searchResponse.text();
+                console.error('Raw non-JSON response:', textResponse);
+                throw new Error(`Unexpected content type: ${contentType}`);
             }
+
+            if (!searchResponse.ok) {
+                const errorText = await searchResponse.text();
+                console.error('Search API failed:', searchResponse.status, errorText);
+                throw new Error(`Search API request failed: ${searchResponse.status} ${errorText}`);
+            }
+
             const searchResults = await searchResponse.json();
             return NextResponse.json(searchResults);
         }
