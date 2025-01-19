@@ -25,7 +25,8 @@
       "@providers/*": ["./app/providers/*"],   // Providers alias
       "@types/*": ["./app/types/*"],  // Types alias
       "@data/*": ["./data/*"],        // Alias for data directory
-      "@public/*": ["./public/*"]     // Alias for public assets
+      "@public/*": ["./public/*"],     // Alias for public assets
+      "@images/*": ["../images/*"]    // for the copertine image JPGs
     }
   },
   "include": [
