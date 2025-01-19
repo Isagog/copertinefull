@@ -18,10 +18,14 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
   onPageChange,
   isLoading
 }) => {
+  // Show page 0 if there are no results
+  const displayPage = totalItems === 0 ? 0 : currentPage;
+  const displayTotalPages = totalItems === 0 ? 0 : totalPages;
+
   return (
     <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
       <div className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
-        <span>Pagina {currentPage} di {totalPages}</span>
+        <span>Pagina {displayPage} di {displayTotalPages}</span>
         <span className="text-gray-400">•</span>
         <span>{totalItems.toLocaleString('it-IT')} Copertine</span>
       </div>
@@ -31,7 +35,7 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
           variant="blue"
           size="icon"
           onClick={() => onPageChange(1)}
-          disabled={currentPage === 1 || isLoading}
+          disabled={currentPage === 1 || isLoading || totalItems === 0}
           className="w-8 h-8"
           title="Prima pagina"
         >
@@ -42,7 +46,7 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
           variant="blue"
           size="icon"
           onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage === 1 || isLoading}
+          disabled={currentPage === 1 || isLoading || totalItems === 0}
           className="w-8 h-8"
           title="Pagina precedente"
         >
@@ -53,7 +57,7 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
           variant="blue"
           size="icon"
           onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage === totalPages || isLoading}
+          disabled={currentPage === totalPages || isLoading || totalItems === 0}
           className="w-8 h-8"
           title="Pagina successiva"
         >
@@ -64,7 +68,7 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
           variant="blue"
           size="icon"
           onClick={() => onPageChange(totalPages)}
-          disabled={currentPage === totalPages || isLoading}
+          disabled={currentPage === totalPages || isLoading || totalItems === 0}
           className="w-8 h-8"
           title="Ultima pagina"
         >
