@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
         console.log('API route hit:', request.url);
         const searchParams = request.nextUrl.searchParams;
         const offset = parseInt(searchParams.get('offset') || '0');
-        const limit = parseInt(searchParams.get('limit') || '30');
+        const limit = parseInt(searchParams.get('limit') || '3600');
         const query = searchParams.get('q');
 
         // If there's a search query, forward to FastAPI
