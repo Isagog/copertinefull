@@ -87,8 +87,11 @@ export default function Home() {
 
     // Sort handling
     const handleSort = (field: SortField) => {
-        if (field === 'relevance' && !isSearchResult) {
-            return; // Don't sort by relevance if not a search result
+        if (field === 'relevance') {
+            if (!isSearchResult) return; // Don't sort by relevance if not a search result
+            setSortField('relevance');
+            setSortDirection('desc'); // Always desc for relevance
+            return;
         }
         
         if (field === sortField) {
@@ -167,23 +170,6 @@ export default function Home() {
                             {/* Sort Controls */}
                             <div className="flex gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <button 
-                                    onClick={() => handleSort('relevance')}
-                                    className={`flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-gray-700 rounded-md transition-colors ${
-                                        !isSearchResult ? 'opacity-50 cursor-not-allowed' : ''
-                                    } ${sortField === 'relevance' ? 'bg-blue-100 dark:bg-gray-700' : ''}`}
-                                    disabled={!isSearchResult}
-                                >
-                                    Rilevanza 
-                                    <div className="flex flex-col">
-                                        <ChevronUp className={`h-3 w-3 -mb-1 ${
-                                            sortField === 'relevance' && sortDirection === 'asc' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
-                                        }`} />
-                                        <ChevronDown className={`h-3 w-3 ${
-                                            sortField === 'relevance' && sortDirection === 'desc' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
-                                        }`} />
-                                    </div>
-                                </button>
-                                <button 
                                     onClick={() => handleSort('date')}
                                     className={`flex items-center gap-2 px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-gray-700 rounded-md transition-colors ${
                                         sortField === 'date' ? 'bg-blue-100 dark:bg-gray-700' : ''
@@ -215,6 +201,19 @@ export default function Home() {
                                         }`} />
                                     </div>
                                 </button>
+                                {isSearchResult && (
+                                    <button 
+                                        onClick={() => {
+                                            setSortField('relevance');
+                                            setSortDirection('desc');
+                                        }}
+                                        className={`px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-gray-700 rounded-md transition-colors ${
+                                            sortField === 'relevance' ? 'bg-blue-100 dark:bg-gray-700' : ''
+                                        }`}
+                                    >
+                                        Rilevanza
+                                    </button>
+                                )}
                             </div>
                         </div>
 

@@ -3,12 +3,11 @@
 
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
-import type { SearchRequest, SearchResult } from '@/app/types/search';
+import type { SearchResult } from '@/app/types/search';
 import type { CopertineEntry } from '@/app/types/copertine';
 
 export default function SearchSection() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [mode, setMode] = useState<SearchRequest['mode']>('literal');
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,7 +17,7 @@ export default function SearchSection() {
 
     setIsSearching(true);
     setError(null);
-    console.log('Starting search with:', { searchTerm, mode });
+    console.log('Starting search with:', { searchTerm });
 
     try {
       const response = await fetch('/api/search', {
@@ -28,7 +27,7 @@ export default function SearchSection() {
         },
         body: JSON.stringify({
           query: searchTerm,
-          mode: mode
+          mode: 'literal'
         }),
       });
       
@@ -135,36 +134,6 @@ export default function SearchSection() {
                   {error}
                 </div>
               )}
-
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Tipo di ricerca:
-                </span>
-                <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-1 bg-gray-200 dark:bg-gray-800">
-                  <button
-                    type="button"
-                    onClick={() => setMode('literal')}
-                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                      mode === 'literal'
-                        ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400'
-                        : 'text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
-                  >
-                    Letterale
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMode('fuzzy')}
-                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                      mode === 'fuzzy'
-                        ? 'bg-white dark:bg-black text-blue-600 dark:text-blue-400'
-                        : 'text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
-                  >
-                    Approssimata
-                  </button>
-                </div>
-              </div>
             </div>
           </form>
         </div>

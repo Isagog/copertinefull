@@ -71,3 +71,6 @@ Thumbs.db
 backend/.DS_Store
 .aider*
 images/
+backend/src/includes/__pycache__/mytypes.cpython-311.pyc
+backend/src/includes/__pycache__/utils.cpython-311.pyc
+backend/src/includes/__pycache__/mytypes.cpython-311.pyc
