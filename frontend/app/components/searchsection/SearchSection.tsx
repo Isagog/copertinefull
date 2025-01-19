@@ -19,7 +19,6 @@ export default function SearchSection() {
     setError(null);
     
     try {
-        // Add /copertine to the API path
         const response = await fetch('/copertine/api/search', {
             method: 'POST',
             headers: {
@@ -62,12 +61,15 @@ export default function SearchSection() {
         sample: transformedResults.slice(0, 2)
       });
 
-      // Even if we get zero results, we should still dispatch the event
-      // This will show an empty state rather than falling back to the full list
-      const event = new CustomEvent('searchResults', { detail: transformedResults });
+      // Dispatch event with both results and search term
+      const event = new CustomEvent('searchResults', { 
+        detail: {
+          results: transformedResults,
+          searchTerm: searchTerm.trim()
+        }
+      });
       window.dispatchEvent(event);
       
-      // If no results were found, show a message to the user
       if (transformedResults.length === 0) {
         setError(`Nessun risultato trovato per "${searchTerm}"`);
       }
@@ -83,67 +85,65 @@ export default function SearchSection() {
   const handleReset = () => {
     setSearchTerm('');
     setError(null);
-    const event = new CustomEvent('resetToFullList');
+    // Also clear the search term when resetting
+    const event = new CustomEvent('resetToFullList', {
+      detail: { searchTerm: '' }
+    });
     window.dispatchEvent(event);
   };
 
-  // app/components/searchsection/SearchSection.tsx
-// ... imports stay the same ...
-
-return (
-  <>
-    <div className="bg-red-600 h-1 w-full" />
-    <div className="w-full bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800">
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <form onSubmit={handleSearch} className="space-y-6">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col sm:flex-row gap-4 items-center">
-              {/* Modified label and input container to be inline */}
-              <div className="flex-1 flex items-center gap-4">
-                <label htmlFor="search" className="text-lg font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                  Cerca
-                </label>
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    id="search"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full px-4 py-2 h-10 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    placeholder="Inserisci il testo da cercare..."
-                  />
-                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
+  return (
+    <>
+      <div className="bg-red-600 h-1 w-full" />
+      <div className="w-full bg-white dark:bg-black border-b border-gray-200 dark:border-gray-800">
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          <form onSubmit={handleSearch} className="space-y-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row gap-4 items-center">
+                <div className="flex-1 flex items-center gap-4">
+                  <label htmlFor="search" className="text-lg font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    Cerca
+                  </label>
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      id="search"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full px-4 py-2 h-10 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                      placeholder="Inserisci il testo da cercare..."
+                    />
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
+                  </div>
+                </div>
+                <div className="sm:self-auto flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={isSearching || searchTerm.trim().length < 2}
+                    className="h-10 flex-1 sm:w-auto px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  >
+                    {isSearching ? 'Ricerca...' : 'Cerca'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    className="h-10 flex-1 sm:w-auto px-6 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors duration-200 font-medium flex items-center justify-center"
+                  >
+                    Lista completa
+                  </button>
                 </div>
               </div>
-              {/* Modified buttons to match input height */}
-              <div className="sm:self-auto flex gap-2">
-                <button
-                  type="submit"
-                  disabled={isSearching || searchTerm.trim().length < 2}
-                  className="h-10 flex-1 sm:w-auto px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                >
-                  {isSearching ? 'Ricerca...' : 'Cerca'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="h-10 flex-1 sm:w-auto px-6 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors duration-200 font-medium flex items-center justify-center"
-                >
-                  Lista completa
-                </button>
-              </div>
-            </div>
 
-            {error && (
-              <div className="text-red-600 text-sm mt-2">
-                {error}
-              </div>
-            )}
-          </div>
-        </form>
+              {error && (
+                <div className="text-red-600 text-sm mt-2">
+                  {error}
+                </div>
+              )}
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
-    <div className="bg-red-600 h-1 w-full" />
-  </>
-);
+      <div className="bg-red-600 h-1 w-full" />
+    </>
+  );
 }

@@ -1,4 +1,3 @@
-// app/page.tsx
 "use client";
 
 import React from "react";
@@ -15,13 +14,18 @@ import { PAGINATION } from "@/app/lib/config/constants";
 type SortField = "date" | "extracted_caption" | "relevance";
 type SortDirection = "asc" | "desc";
 
+// Define the type for our search results event
+interface SearchResultsEvent {
+  results: CopertineEntry[];
+  searchTerm: string;
+}
+
 export default function Home() {
   // State declarations
   const [copertine, setCopertine] = React.useState<CopertineEntry[]>([]);
-  const [originalOrder, setOriginalOrder] = React.useState<CopertineEntry[]>(
-    []
-  );
+  const [originalOrder, setOriginalOrder] = React.useState<CopertineEntry[]>([]);
   const [isSearchResult, setIsSearchResult] = React.useState(false);
+  const [currentSearchTerm, setCurrentSearchTerm] = React.useState<string>('');
   const [pagination, setPagination] = React.useState<PaginationInfo>({
     total: 0,
     offset: 0,
@@ -29,77 +33,78 @@ export default function Home() {
     hasMore: true,
   });
   const [sortField, setSortField] = React.useState<SortField>("date");
-  const [sortDirection, setSortDirection] =
-    React.useState<SortDirection>("desc");
+  const [sortDirection, setSortDirection] = React.useState<SortDirection>("desc");
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   // Fetch page data
   const fetchPage = React.useCallback(async (offset: number) => {
     try {
-        setIsLoading(true);
-        console.log(`Fetching page with offset ${offset}`);
+      setIsLoading(true);
+      console.log(`Fetching page with offset ${offset}`);
 
-        // Explicitly construct the URL using window.location.origin
-        const baseUrl = window.location.origin;
-        const url = `${baseUrl}/copertine/api/copertine?offset=${offset}&limit=${pagination.limit}`;
-        console.log('Requesting URL:', url);
-        
-        const response = await fetch(url);
-        console.log('Response status:', response.status);
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Error response:', errorText);
-            throw new Error(`Failed to fetch data: ${response.status} ${errorText}`);
-        }
-        
-        const data: CopertineResponse = await response.json();
-        console.log('Received data:', data);
-        
-        if (!data.data || !Array.isArray(data.data)) {
-            throw new Error('Invalid data format received');
-        }
+      const baseUrl = window.location.origin;
+      const url = `${baseUrl}/copertine/api/copertine?offset=${offset}&limit=${pagination.limit}`;
+      console.log('Requesting URL:', url);
+      
+      const response = await fetch(url);
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`Failed to fetch data: ${response.status} ${errorText}`);
+      }
+      
+      const data: CopertineResponse = await response.json();
+      console.log('Received data:', data);
+      
+      if (!data.data || !Array.isArray(data.data)) {
+        throw new Error('Invalid data format received');
+      }
 
-        setCopertine(data.data);
-        setOriginalOrder(data.data);
-        setPagination(data.pagination);
-        setIsSearchResult(false);
-        setSortField('date');
-        setError(null);
+      setCopertine(data.data);
+      setOriginalOrder(data.data);
+      setPagination(data.pagination);
+      setIsSearchResult(false);
+      setCurrentSearchTerm('');
+      setSortField('date');
+      setError(null);
     } catch (err) {
-        console.error('Fetch error:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load data');
-        setCopertine([]);
-        setOriginalOrder([]);
-        setPagination({
-            total: 0,
-            offset: 0,
-            limit: PAGINATION.ITEMS_PER_PAGE,
-            hasMore: false
-        });
+      console.error('Fetch error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load data');
+      setCopertine([]);
+      setOriginalOrder([]);
+      setPagination({
+        total: 0,
+        offset: 0,
+        limit: PAGINATION.ITEMS_PER_PAGE,
+        hasMore: false
+      });
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
-}, [pagination.limit]);
+  }, [pagination.limit]);
 
   // Handle search results and reset
   React.useEffect(() => {
-    const handleSearchResults = (event: CustomEvent<CopertineEntry[]>) => {
+    const handleSearchResults = (event: CustomEvent<SearchResultsEvent>) => {
       console.log("Handling search results:", {
-        resultCount: event.detail.length,
-        sampleResults: event.detail.slice(0, 2),
+        resultCount: event.detail.results.length,
+        searchTerm: event.detail.searchTerm,
+        sampleResults: event.detail.results.slice(0, 2),
       });
 
-      setCopertine(event.detail);
-      setOriginalOrder(event.detail);
+      setCopertine(event.detail.results);
+      setOriginalOrder(event.detail.results);
+      setCurrentSearchTerm(event.detail.searchTerm);
       setIsSearchResult(true);
       setSortField("relevance");
       setPagination({
-        total: event.detail.length,
+        total: event.detail.results.length,
         offset: 0,
         limit: PAGINATION.ITEMS_PER_PAGE,
-        hasMore: event.detail.length > PAGINATION.ITEMS_PER_PAGE,
+        hasMore: event.detail.results.length > PAGINATION.ITEMS_PER_PAGE,
       });
     };
 
@@ -136,7 +141,7 @@ export default function Home() {
   // Sort handling
   const handleSort = (field: SortField) => {
     if (field === "relevance") {
-      if (!isSearchResult) return; // Don't sort by relevance if not a search result
+      if (!isSearchResult) return;
       setSortField("relevance");
       setSortDirection("desc"); // Always desc for relevance
       return;
@@ -206,11 +211,9 @@ export default function Home() {
           <div>
             {/* Combined Sort and Pagination Controls */}
             <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
-              {/* Pagination Controls - Now shown for both search and normal results */}
+              {/* Pagination Controls */}
               <PaginationControls
-                currentPage={
-                  Math.floor(pagination.offset / pagination.limit) + 1
-                }
+                currentPage={Math.floor(pagination.offset / pagination.limit) + 1}
                 totalPages={Math.ceil(pagination.total / pagination.limit)}
                 totalItems={pagination.total}
                 onPageChange={(newPage) => {
@@ -292,10 +295,14 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Copertine Cards */}
+            {/* Copertine Cards with search term prop */}
             <div className="space-y-6">
               {sortedCopertine.map((copertina) => (
-                <CopertinaCard key={copertina.filename} copertina={copertina} />
+                <CopertinaCard 
+                  key={copertina.filename} 
+                  copertina={copertina} 
+                  searchTerm={currentSearchTerm}
+                />
               ))}
             </div>
           </div>

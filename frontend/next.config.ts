@@ -9,7 +9,6 @@ const nextConfig: NextConfig = {
     unoptimized: true,
     domains: ['localhost'],
   },
-  optimizeFonts: true,
 };
 
 export default nextConfig;
