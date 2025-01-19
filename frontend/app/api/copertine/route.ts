@@ -15,7 +15,15 @@ export async function GET(request: NextRequest) {
 
         // If there's a search query, forward to FastAPI
         if (query) {
-            const searchResponse = await fetch(`${API.FASTAPI_URL}/search?q=${encodeURIComponent(query)}`);
+            console.log('Forwarding search to FastAPI:', `${API.FASTAPI_URL}/search?q=${encodeURIComponent(query)}`);
+            const searchResponse = await fetch(`${API.FASTAPI_URL}/search?q=${encodeURIComponent(query)}`, {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+
+            console.log('FastAPI response status:', searchResponse.status);
+            console.log('FastAPI response headers:', Object.fromEntries(searchResponse.headers.entries()));
             
             // Check content type
             const contentType = searchResponse.headers.get('content-type');

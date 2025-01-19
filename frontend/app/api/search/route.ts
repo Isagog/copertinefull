@@ -20,10 +20,24 @@ export async function POST(request: NextRequest) {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         cache: 'no-store',
         next: { revalidate: 0 },
       });
+
+      console.log('FastAPI response status:', response.status);
+      console.log('FastAPI response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('FastAPI error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        throw new Error(`FastAPI request failed: ${response.status} ${response.statusText}\n${errorText}`);
+      }
 
       // Check content type
       const contentType = response.headers.get('content-type');
