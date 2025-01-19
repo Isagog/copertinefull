@@ -4,7 +4,7 @@ A web application to archive and search through the front pages ("copertine") of
 
 ## Overview
 
-This project provides a searchable archive of Il Manifesto's front pages, with automated daily updates and a modern web interface.
+This project provides a searchable archive of Il Manifesto's opening stories, with automated daily updates and a modern web interface.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ The system consists of three main components:
 3. **Database** (Weaviate)
    - Vector database storing copertine metadata and search indices
    - Connected via Docker network
-   - Provides semantic search capabilities
+   - Provides strong BM25F text search capabilities
 
 ## Setup
 
@@ -53,7 +53,8 @@ COP_OLDEST_DATE=2013-03-27
 2. Configure environment variables
 3. Start services:
 ```bash
-docker-compose up -d
+docker-compose up -d copback
+docker-compose up -d copfront
 ```
 
 ### Nginx Configuration
@@ -171,7 +172,7 @@ Services run in containers:
 
 ## Features
 
-- Full-text and semantic search
+- Full-text BM25F search
 - Image preview on hover
 - Detailed image modal view
 - Sort by date or relevance
