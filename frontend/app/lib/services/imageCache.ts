@@ -33,7 +33,7 @@ class ImagePathCache {
                try {
                    const parsed = JSON.parse(storedCache);
                    this.cache = new Map(parsed);
-               } catch (_e) {
+               } catch (_) {
                    console.error('Failed to parse cached image paths');
                    this.cache = new Map();
                }
