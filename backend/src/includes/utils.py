@@ -15,7 +15,8 @@ def setup_logging(name: str) -> logging.Logger:
     """Configure and return a logger."""
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        format="%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
         handlers=[
             logging.FileHandler(f"{name}.log"),
             logging.StreamHandler(),
