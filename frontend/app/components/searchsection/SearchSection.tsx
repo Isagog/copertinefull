@@ -127,7 +127,7 @@ export default function SearchSection() {
                   <button
                     type="button"
                     onClick={handleReset}
-                    className="h-10 flex-1 sm:w-auto px-6 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors duration-200 font-medium flex items-center justify-center"
+                    className="h-10 flex-1 sm:w-auto px-8 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors duration-200 font-medium flex items-center justify-center"
                   >
                     Lista completa
                   </button>
