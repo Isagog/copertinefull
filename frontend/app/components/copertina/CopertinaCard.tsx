@@ -31,7 +31,7 @@ function formatItalianDate(isoDate: string): string {
 export default function CopertinaCard({ copertina }: CopertinaCardProps) {
   const [isPopupVisible, setIsPopupVisible] = useState(false);
 
-  const imagePath = `/images/${copertina.filename}`;
+  const imagePath = `/copertine/images/${copertina.filename}`;
   const formattedDate = formatItalianDate(copertina.isoDate);
 
   const togglePopup = () => {
