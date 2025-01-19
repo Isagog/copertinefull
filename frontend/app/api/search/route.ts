@@ -9,11 +9,19 @@ export async function POST(request: NextRequest) {
     console.log('Search request received:', searchParams);
     
     // Create URL with search parameters
-    const url = new URL(`${API.FASTAPI_URL}/api/v1/copertine`);
+    const backendUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || API.FASTAPI_URL;
+    console.log('Using backend URL:', backendUrl);
+    
+    const url = new URL(`${backendUrl}/api/v1/copertine`);
     url.searchParams.append('search', searchParams.query);
     url.searchParams.append('mode', searchParams.mode);
     
     console.log('Calling FastAPI URL:', url.toString());
+    console.log('Environment:', {
+      NODE_ENV: process.env.NODE_ENV,
+      FASTAPI_URL: API.FASTAPI_URL,
+      NEXT_PUBLIC_FASTAPI_URL: process.env.NEXT_PUBLIC_FASTAPI_URL
+    });
 
     try {
       const response = await fetch(url, {
