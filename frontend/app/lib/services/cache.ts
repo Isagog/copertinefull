@@ -1,6 +1,6 @@
 // app/lib/services/cache.ts
 import { CopertineEntry, PaginationInfo } from '@/app/types/copertine';
-import { PAGINATION, CACHE} from '../config/constants';
+import { PAGINATION, CACHE } from '../config/constants';
 
 interface CacheEntry {
     data: CopertineEntry[];
@@ -12,13 +12,14 @@ interface PageCache {
     [key: number]: CacheEntry;
 }
 
-interface WeaviateCopertineItem {
-    captionStr: string;
-    editionDateIsoStr: string;
-    editionId: string;
-    editionImageFnStr: string;
-    kickerStr: string;
-    testataName: string;
+interface ApiResponse {
+    data: CopertineEntry[];
+    pagination: {
+        total: number;
+        offset: number;
+        limit: number;
+        hasMore: boolean;
+    };
 }
 
 class CopertineCache {
@@ -53,53 +54,39 @@ class CopertineCache {
         return false;
     }
 
-    // app/lib/services/cache.ts
-private async fetchPageData(offset: number): Promise<CacheEntry> {
-    try {
-        const baseUrl = typeof window === 'undefined' 
-            ? process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'  // Server-side
-            : '';  // Client-side (relative URL is fine)
+    private async fetchPageData(offset: number): Promise<CacheEntry> {
+        try {
+            const baseUrl = typeof window === 'undefined' 
+                ? (process.env.NODE_ENV === 'production'
+                    ? process.env.NEXT_PUBLIC_BASE_URL || 'https://dev.isagog.com/copertine'
+                    : 'http://localhost:3000')
+                : '';  // Client-side (relative URL is fine)
+                
+            const apiUrl = `${baseUrl}/api/copertine?offset=${offset}&limit=${PAGINATION.ITEMS_PER_PAGE}`;
+            console.log('Requesting URL:', apiUrl);
+
+            const response = await fetch(apiUrl);
+            console.log('Response status:', response.status);
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
+            }
+
+            const result = await response.json() as ApiResponse;
+            console.log('Received data:', result);
+
+            return {
+                data: result.data,
+                pagination: result.pagination,
+                timestamp: Date.now()
+            };
             
-        const apiUrl = `${baseUrl}/api/copertine?offset=${offset}&limit=${PAGINATION.ITEMS_PER_PAGE}`;
-        console.log('Requesting URL:', apiUrl);
-
-        const response = await fetch(apiUrl);
-        console.log('Response status:', response.status);
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        } catch (error) {
+            console.error('Error fetching page data:', error);
+            throw error;
         }
-
-        const result = await response.json();
-        console.log('Received data:', result);
-
-        if (result.cached) {
-            return result;
-        }
-
-        const mappedData: CopertineEntry[] = result.data.map((item: WeaviateCopertineItem) => ({
-            extracted_caption: item.captionStr,
-            kickerStr: item.kickerStr,
-            date: new Date(item.editionDateIsoStr).toLocaleDateString('it-IT'),
-            filename: item.editionImageFnStr,
-            isoDate: item.editionDateIsoStr
-        }));
-
-        return {
-            data: mappedData,
-            pagination: {
-                total: result.pagination.total,
-                offset,
-                limit: PAGINATION.ITEMS_PER_PAGE,
-                hasMore: offset + PAGINATION.ITEMS_PER_PAGE < result.pagination.total
-            },
-            timestamp: Date.now()
-        };
-    } catch (error) {
-        console.error('Error fetching page data:', error);
-        throw error;
     }
-}
 
     private async startBackgroundPrefetch(): Promise<void> {
         if (this.prefetchPromise) return;
