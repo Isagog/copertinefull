@@ -1,6 +1,6 @@
 # Il Manifesto Copertine Archive
 
-A web application to archive and search through the front pages ("copertine") of Il Manifesto newspaper.
+A full stack application to archive and search through the opening stories ("copertine") of Il Manifesto newspaper.
 
 ## Overview
 
