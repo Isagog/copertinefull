@@ -119,7 +119,7 @@ return (
               <div className="sm:self-auto flex gap-2">
                 <button
                   type="submit"
-                  disabled={isSearching || !searchTerm.trim()}
+                  disabled={isSearching || searchTerm.trim().length < 2}
                   className="h-10 flex-1 sm:w-auto px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
                   {isSearching ? 'Ricerca...' : 'Cerca'}
