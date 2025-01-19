@@ -22,24 +22,25 @@ class ImagePathCache {
    }
 
    private loadFromStorage() {
-       if (typeof window !== 'undefined') {
-           // Load last refresh time
-           const storedRefresh = localStorage.getItem(this.LAST_REFRESH_KEY);
-           this.lastCacheRefresh = storedRefresh ? new Date(storedRefresh) : null;
+    if (typeof window !== 'undefined') {
+        // Load last refresh time
+        const storedRefresh = localStorage.getItem(this.LAST_REFRESH_KEY);
+        this.lastCacheRefresh = storedRefresh ? new Date(storedRefresh) : null;
 
-           // Load cached paths
-           const storedCache = localStorage.getItem(this.STORAGE_KEY);
-           if (storedCache) {
-               try {
-                   const parsed = JSON.parse(storedCache);
-                   this.cache = new Map(parsed);
-               } catch (_) {
-                   console.error('Failed to parse cached image paths');
-                   this.cache = new Map();
-               }
-           }
-       }
-   }
+        // Load cached paths
+        const storedCache = localStorage.getItem(this.STORAGE_KEY);
+        if (storedCache) {
+            try {
+                const parsed = JSON.parse(storedCache);
+                this.cache = new Map(parsed);
+            } catch (error) {  // Changed from _ to error
+                console.error('Failed to parse cached image paths:', error);
+                this.cache = new Map();
+            }
+        }
+    }
+}
+
 
    private saveToStorage() {
        if (typeof window !== 'undefined') {
