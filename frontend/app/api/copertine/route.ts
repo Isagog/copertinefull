@@ -15,12 +15,12 @@ export async function GET(request: NextRequest) {
 
         // If there's a search query, forward to FastAPI
         if (query) {
-            const backendUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || API.FASTAPI_URL;
+            const backendUrl = process.env.FASTAPI_URL || API.FASTAPI_URL;
             console.log('Using backend URL:', backendUrl);
             console.log('Environment:', {
                 NODE_ENV: process.env.NODE_ENV,
-                FASTAPI_URL: API.FASTAPI_URL,
-                NEXT_PUBLIC_FASTAPI_URL: process.env.NEXT_PUBLIC_FASTAPI_URL
+                FASTAPI_URL: process.env.FASTAPI_URL,
+                BACKEND_URL: backendUrl
             });
             
             console.log('Forwarding search to FastAPI:', `${backendUrl}/search?q=${encodeURIComponent(query)}`);

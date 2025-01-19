@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     console.log('Search request received:', searchParams);
     
     // Create URL with search parameters
-    const backendUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || API.FASTAPI_URL;
+    const backendUrl = process.env.FASTAPI_URL || API.FASTAPI_URL;
     console.log('Using backend URL:', backendUrl);
     
     const url = new URL(`${backendUrl}/api/v1/copertine`);
