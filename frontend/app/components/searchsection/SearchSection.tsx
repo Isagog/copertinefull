@@ -17,19 +17,19 @@ export default function SearchSection() {
 
     setIsSearching(true);
     setError(null);
-    console.log('Starting search with:', { searchTerm });
-
+    
     try {
-      const response = await fetch('/api/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: searchTerm,
-          mode: 'literal'
-        }),
-      });
+        // Add /copertine to the API path
+        const response = await fetch('/copertine/api/search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                query: searchTerm,
+                mode: 'literal'
+            }),
+        });
       
       const data = await response.json();
       console.log('Search API response:', {

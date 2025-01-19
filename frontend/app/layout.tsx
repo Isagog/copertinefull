@@ -22,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="it" className={fontSans.variable}>
       <head>
-        <link rel="preload" href="/manifesto_logo.svg" as="image" />
+        <link rel="preload" href="/copertine/manifesto_logo.svg" as="image" />
       </head>
       <body className="antialiased">
         <ThemeProvider defaultTheme="light">

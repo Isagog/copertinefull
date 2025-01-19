@@ -20,7 +20,7 @@ export default function Header() {
             {/* Central logo */}
             <Link href="/" className="flex items-center justify-center">
               <Image
-                src="/manifesto_logo.svg"
+                src="/copertine/manifesto_logo.svg"
                 alt="Il Manifesto"
                 width={300}
                 height={50}
