@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { CopertineEntry } from "@app/types/copertine";
 import Image from "next/image";
+import { imagePathCache } from '@/app/lib/services/imageCache';
 
 interface CopertinaCardProps {
   copertina: CopertineEntry;
@@ -29,9 +30,8 @@ function formatItalianDate(isoDate: string): string {
 }
 
 export default function CopertinaCard({ copertina }: CopertinaCardProps) {
+  const imagePath = imagePathCache.getImagePath(copertina.filename);
   const [isPopupVisible, setIsPopupVisible] = useState(false);
-
-  const imagePath = `/images/${copertina.filename}`;
   const formattedDate = formatItalianDate(copertina.isoDate);
 
   const togglePopup = () => {
