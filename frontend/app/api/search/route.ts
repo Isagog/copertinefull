@@ -65,7 +65,6 @@ export async function POST(request: NextRequest) {
     }
   } catch (err) {
     console.error('Error in search API route:', err);
-    console.error('Error in search API route:', error);
     return NextResponse.json(
       { error: 'Internal server error while processing search request' },
       { status: 500 }
