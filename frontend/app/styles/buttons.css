@@ -1,0 +1,28 @@
+/* app/styles/buttons.css */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* A basic reusable base for all buttons */
+.btn {
+  @apply inline-flex items-center justify-center 
+         px-4 py-2 rounded-lg 
+         font-medium transition-colors duration-200
+         disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+/* Primary button: typically “blue” */
+.btn-primary {
+  @apply text-white 
+         bg-blue-500 hover:bg-blue-600 
+         border-transparent;
+}
+
+/* Secondary (gray) button */
+.btn-secondary {
+  @apply text-gray-700 dark:text-gray-200
+         bg-gray-200 dark:bg-gray-700
+         hover:bg-gray-300 dark:hover:bg-gray-600
+         border-transparent;
+}
