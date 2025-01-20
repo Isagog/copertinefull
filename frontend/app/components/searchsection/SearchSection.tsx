@@ -1,7 +1,7 @@
 // app/components/searchsection/SearchSection.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import type { SearchResult } from '@/app/types/search';
 import type { CopertineEntry } from '@/app/types/copertine';
@@ -10,6 +10,13 @@ export default function SearchSection() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFullList, setIsFullList] = useState(true);
+
+  useEffect(() => {
+    const handleSearchResults = () => setIsFullList(false);
+    window.addEventListener('searchResults', handleSearchResults);
+    return () => window.removeEventListener('searchResults', handleSearchResults);
+  }, []);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,12 +38,6 @@ export default function SearchSection() {
         });
       
       const data = await response.json();
-      console.log('Search API response:', {
-        status: response.status,
-        ok: response.ok,
-        resultCount: data.results?.length,
-        sampleResults: data.results?.slice(0, 2)
-      });
       
       if (!response.ok) {
         throw new Error(data.error || 'Search request failed');
@@ -54,11 +55,6 @@ export default function SearchSection() {
         filename: result.editionImageFnStr,
         isoDate: result.editionDateIsoStr
       }));
-
-      console.log('Transformed results:', {
-        count: transformedResults.length,
-        sample: transformedResults.slice(0, 2)
-      });
 
       const event = new CustomEvent('searchResults', { 
         detail: {
@@ -83,21 +79,36 @@ export default function SearchSection() {
   const handleReset = () => {
     setSearchTerm('');
     setError(null);
+    setIsFullList(true);
     const event = new CustomEvent('resetToFullList', {
       detail: { searchTerm: '' }
     });
     window.dispatchEvent(event);
   };
 
-  // Dynamic button classes based on search term length
-  const searchButtonClasses = `
-    h-12 flex-1 sm:w-auto px-6 rounded-lg transition-colors duration-200 font-medium 
-    disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center
-    ${searchTerm.trim().length >= 2 
-      ? 'bg-blue-500 hover:bg-blue-600 text-white' 
-      : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'
-    }
-  `;
+  // Base button classes
+  const baseButtonClasses = "h-12 flex-1 sm:w-auto px-6 rounded-lg transition-colors duration-200 font-medium flex items-center justify-center";
+  
+  // Active button style (dark)
+  const activeButtonClasses = "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200";
+  
+  // Inactive button style (light)
+  const inactiveButtonClasses = "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed";
+  
+  // Primary button style (blue)
+  const primaryButtonClasses = "bg-blue-500 hover:bg-blue-600 text-white";
+
+  const searchButtonClasses = `${baseButtonClasses} ${
+    searchTerm.trim().length >= 2 
+      ? primaryButtonClasses
+      : inactiveButtonClasses
+  }`;
+
+  const resetButtonClasses = `${baseButtonClasses} ${
+    isFullList 
+      ? inactiveButtonClasses 
+      : activeButtonClasses
+  }`;
 
   return (
     <>
@@ -134,7 +145,8 @@ export default function SearchSection() {
                   <button
                     type="button"
                     onClick={handleReset}
-                    className="h-12 flex-1 sm:w-auto px-8 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors duration-200 font-medium flex items-center justify-center"
+                    disabled={isFullList}
+                    className={resetButtonClasses}
                   >
                     Lista completa
                   </button>
