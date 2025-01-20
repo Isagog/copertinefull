@@ -47,7 +47,6 @@ export default function SearchSection() {
         throw new Error('Unexpected response format from search service');
       }
       
-      // Transform search results to match CopertineEntry type
       const transformedResults: CopertineEntry[] = data.results.map((result: SearchResult) => ({
         extracted_caption: result.captionStr,
         kickerStr: result.kickerStr,
@@ -61,7 +60,6 @@ export default function SearchSection() {
         sample: transformedResults.slice(0, 2)
       });
 
-      // Dispatch event with both results and search term
       const event = new CustomEvent('searchResults', { 
         detail: {
           results: transformedResults,
@@ -85,12 +83,21 @@ export default function SearchSection() {
   const handleReset = () => {
     setSearchTerm('');
     setError(null);
-    // Also clear the search term when resetting
     const event = new CustomEvent('resetToFullList', {
       detail: { searchTerm: '' }
     });
     window.dispatchEvent(event);
   };
+
+  // Dynamic button classes based on search term length
+  const searchButtonClasses = `
+    h-12 flex-1 sm:w-auto px-6 rounded-lg transition-colors duration-200 font-medium 
+    disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center
+    ${searchTerm.trim().length >= 2 
+      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+      : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'
+    }
+  `;
 
   return (
     <>
@@ -120,7 +127,7 @@ export default function SearchSection() {
                   <button
                     type="submit"
                     disabled={isSearching || searchTerm.trim().length < 2}
-                    className="h-12 flex-1 sm:w-auto px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    className={searchButtonClasses}
                   >
                     {isSearching ? 'Ricerca...' : 'Cerca'}
                   </button>
