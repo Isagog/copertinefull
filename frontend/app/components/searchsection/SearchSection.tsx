@@ -94,7 +94,7 @@ export default function SearchSection() {
     h-12 flex-1 sm:w-auto px-6 rounded-lg transition-colors duration-200 font-medium 
     disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center
     ${searchTerm.trim().length >= 2 
-      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+      ? 'bg-blue-500 hover:bg-blue-600 text-white' 
       : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'
     }
   `;
