@@ -97,9 +97,9 @@ export default function CopertinaCard({ copertina, currentOffset, searchTerm }: 
           </div>
 
           {/* Image and Kicker container */}
-          <div className="flex gap-6">
+          <div className="flex flex-col md:flex-row gap-6">
             {/* Image */}
-            <div className="flex-shrink-0 w-72">
+            <div className="w-full md:w-72 flex-shrink-0">
               <div 
                 className="relative aspect-[4/3] w-full rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
                 onClick={togglePopup}
@@ -114,7 +114,7 @@ export default function CopertinaCard({ copertina, currentOffset, searchTerm }: 
             </div>
 
             {/* Kicker Text */}
-            <div className="max-w-lg text-lg leading-relaxed text-gray-700 dark:text-gray-300">
+            <div className="w-full md:max-w-lg text-lg leading-relaxed text-gray-700 dark:text-gray-300">
               <p className="text-justify">
                 {highlightText(copertina.kickerStr, searchTerm || '')}
               </p>
@@ -122,7 +122,7 @@ export default function CopertinaCard({ copertina, currentOffset, searchTerm }: 
           </div>
         </div>
 
-        {/* Popup remains the same... */}
+        {/* Popup overlay */}
         {isPopupVisible && (
           <div
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
