@@ -31,9 +31,9 @@ logger = logging.getLogger(__name__)
 HTTP_STATUS_OK = 200
 SEPARATOR_LINE = "-" * 50
 OUTPUT_FILE = Path("manifesto_archive.json")
-IMAGES_DIR = Path("/Volumes/2TBWDB/code/copertinefull/backend/images")
 MISSING_ENV_VAR_MSG = "COPERTINE_OLDEST_DATE environment variable must be set (format: YYYY-MM-DD)"
 INVALID_DATE_FORMAT_MSG = "Invalid start date format. Expected YYYY-MM-DD."
+MISSING_IMAGES_DIR_MSG = "COP_IMAGES_DIR environment variable must be set"
 
 class ManifestoScraper:
     def __init__(self):
@@ -44,8 +44,13 @@ class ManifestoScraper:
         # Initialize Weaviate client
         self.client = self._init_weaviate_client()
         self.collection = self._ensure_collection()
+        # Get images directory from environment
+        images_dir_str = os.getenv("COP_IMAGES_DIR")
+        if not images_dir_str:
+            raise ValueError(MISSING_IMAGES_DIR_MSG)
+        self.images_dir = Path(images_dir_str)
         # Create images directory
-        IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+        self.images_dir.mkdir(parents=True, exist_ok=True)
         # Check if JSON saving is enabled
         self.save_to_json = os.getenv("COP_SAVE_TO_JSON", "false").lower() == "true"
 
@@ -341,7 +346,7 @@ class ManifestoScraper:
                             date_str,
                         )
                         if image_filename:
-                            image_path = IMAGES_DIR / image_filename
+                            image_path = self.images_dir / image_filename
                             if self.download_image(client, page_info["image_url"], image_path):
                                 page_info["saved_image"] = str(image_path)
                                 logger.info("Downloaded image to %s", image_path)
