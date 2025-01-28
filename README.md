@@ -55,6 +55,27 @@ The system consists of three main components:
    - Connected via Docker network
    - Provides strong BM25F text search capabilities
 
+   **Collection Schema (`Copertine`)**
+   ```
+   Properties:
+   - testataName (text)        : Publication name, non-searchable field
+   - editionId (text)          : Unique identifier for each edition, non-searchable
+   - editionDateIsoStr (date)  : Publication date
+   - editionImageFnStr (text)  : Image filename reference, non-searchable
+   - captionStr (text)         : Scraped caption text, non-filterable
+   - kickerStr (text)          : Scraped news description, non-filterable
+   - captionAIStr (text)       : AI-extracted caption, non-filterable
+   - imageAIDeStr (text)       : AI-generated image description, non-filterable
+   - modelAIName (text)        : LLM model used, non-searchable
+   ```
+
+   **Collection Configuration**
+   - No vector indexing enabled (`vectorizer: none`)
+   - Text fields use BM25F for search capabilities
+   - Date field supports chronological operations
+   - Field-level tokenization for exact matching where needed
+   - Optimized for text search and filtering operations
+
 ## System Architecture
 
 ### Component Interaction Diagram
