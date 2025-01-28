@@ -236,14 +236,14 @@ Add to your Nginx configuration:
 - The port in the `/copertine` location (3737) must match your frontend container's exposed port
 - The path in the `/images/` location (`/home/mema/code/copertinefull/images/`) must be updated to match your actual host system path where images are stored
 
-### Automated Updates Setup
+### Batch scraping Setup
 
 1. **Create Update Script**
    Create `refreshbind.sh` in project root:
    ```bash
    #!/bin/bash
 
-   # Run the scraping process
+   # Run the scraping process (verify the path is correct)
    /home/mema/code/copertinefull/backend/.venv/bin/python /home/mema/code/copertinefull/backend/src/scrape2.py
 
    # Restart the container
