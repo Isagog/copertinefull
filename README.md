@@ -232,6 +232,10 @@ Add to your Nginx configuration:
     }
 ```
 
+**Important Configuration Notes:**
+- The port in the `/copertine` location (3737) must match your frontend container's exposed port
+- The path in the `/images/` location (`/home/mema/code/copertinefull/images/`) must be updated to match your actual host system path where images are stored
+
 ### Automated Updates Setup
 
 1. **Create Update Script**
