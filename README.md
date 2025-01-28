@@ -60,80 +60,27 @@ The system consists of three main components:
 ### Component Interaction Diagram
 ```mermaid
 graph LR
-    subgraph Data Sources
-        IM[Il Manifesto Digital Edition]
-    end
-
-    subgraph Processing
-        BS[Batch Scraper]
-    end
-
-    subgraph Storage Layer
-        W[(Weaviate DB)]
-        FS[/Images/]
-    end
-
-    subgraph Application Layer
-        BE[Backend API<br/>:8383]
-        FE[Frontend<br/>:3737]
-    end
-
-    %% Data flow connections
-    IM -->|Daily Scrape| BS
-    BS -->|Store Metadata| W
-    BS -->|Store Images| FS
-    BE -->|Query| W
-    BE -->|Read| FS
-    FE -->|API Requests| BE
-
-    %% Styling for better contrast and readability
-    style IM fill:#ffd7e8,stroke:#333
-    style W fill:#d7e8ff,stroke:#333
-    style FS fill:#d7e8ff,stroke:#333
-    style BS fill:#d7ffd7,stroke:#333
-    style BE fill:#d7ffd7,stroke:#333
-    style FE fill:#d7ffd7,stroke:#333
-
-    %% Clearer subgraph styling
-    classDef subgraphStyle fill:#f5f5f5,stroke:#666
-    class Data Sources,Processing,Storage Layer,Application Layer subgraphStyle
+    IM[Il Manifesto] --> BS[Batch Scraper]
+    BS --> W[(Weaviate)]
+    BS --> FS[/Images/]
+    BE[Backend :8383] --> W
+    BE --> FS
+    FE[Frontend :3737] --> BE
 ```
 
 ### Daily Update Process
 ```mermaid
 sequenceDiagram
-    participant C as Crontab
-    participant S as Batch Scraper
-    participant IM as Il Manifesto
+    participant C as Cron
+    participant S as Scraper
+    participant IM as Manifesto
     participant W as Weaviate
-    participant FS as Filesystem
-    participant D as Docker
-
-    C->>S: Trigger daily scrape (5:00 AM)
-    
-    rect rgb(240, 240, 240)
-        Note right of S: Main Process
-        S->>IM: Fetch digital edition
-        alt Success
-            S->>S: Extract article content<br/>(heuristic analysis)
-            par Storage Operations
-                S->>W: Store title & kicker
-                Note over S,W: Retries on failure
-                S->>FS: Save image to /images
-                Note over S,FS: Validates image
-            end
-        else Error
-            S-->>C: Log error & exit
-        end
-    end
-
-    rect rgb(240, 240, 240)
-        Note right of C: Cleanup Process
-        C->>D: Restart frontend container
-        D->>D: Clear page cache
-        D->>D: Clear image cache
-        Note over D: Verify container health
-    end
+    participant FS as Files
+    C->>S: Daily scrape
+    S->>IM: Fetch edition
+    S->>W: Store metadata
+    S->>FS: Save image
+    C->>C: Restart app
 ```
 
 ## Data Flow
