@@ -1,61 +1,40 @@
-target-version = "py311"
+# Same as Black.
 line-length = 88
 
+# Assume Python 3.10
+target-version = "py310"
+
 [lint]
+# Enable flake8-bugbear (`B`) rules.
 select = [
     "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
     "F",   # pyflakes
-    "I",   # isort
-    "C",   # flake8-comprehensions
     "B",   # flake8-bugbear
-    "S",   # flake8-bandit
-    "A",   # flake8-builtins
-    "COM", # flake8-commas
-    "C4",  # flake8-comprehensions
-    "DTZ", # flake8-datetimez
-    "T10", # flake8-debugger
-    "EM",  # flake8-errmsg
-    "EXE", # flake8-executable
-    "ISC", # flake8-implicit-str-concat
-    "G",   # flake8-logging-format
-    "PIE", # flake8-pie
-    "T20", # flake8-print
-    "PYI", # flake8-pyi
-    "PT",  # flake8-pytest-style
-    "Q",   # flake8-quotes
-    "RET", # flake8-return
-    "SIM", # flake8-simplify
-    "TID", # flake8-tidy-imports
-    "ARG", # flake8-unused-arguments
-    "PTH", # flake8-use-pathlib
-    "ERA", # eradicate
-    "PGH", # pygrep-hooks
-    "PL",  # pylint
+    "C",   # mccabe complexity
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "RUF", # ruff-specific rules
     "TRY", # tryceratops
-    "RUF", # Ruff-specific rules
+    "PLR", # pylint refactor
 ]
 
-ignore = [
-    "E501",    # Line too long (handled by formatter)
-    "PLR0913", # Too many arguments to function call (> 5)
-    "S101",    # Use of assert detected (may want to keep this for tests)
-]
+# Never enforce `E501` (line length violations).
+ignore = ["E501"]
 
-# Enable fixing for all rules, including logging format issues
-fixable = ["ALL"]
-unfixable = []
+# Avoid trying to fix flake8-bugbear (`B`) violations.
+unfixable = ["B"]
 
-[lint.per-file-ignores]
-"__init__.py" = ["F401"]  # Ignore unused imports in __init__.py files
-"*/api/*.py" = ["B008"]   # Ignore function call argument default in FastAPI route definitions
-"tests/*" = ["SIM117", "COM812", "S311"]
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [lint.mccabe]
+# Flag errors (`C901`) when complexity exceeds 10.
 max-complexity = 10
+
+[lint.per-file-ignores]
+"__init__.py" = ["E402", "F401"]
+"**/tests/**" = ["PLR2004"]
 
 [lint.isort]
 combine-as-imports = true
-force-sort-within-sections = true
-known-first-party = ["your_project_name"]
-known-third-party = ["fastapi", "pydantic", "sqlalchemy", "alembic"]

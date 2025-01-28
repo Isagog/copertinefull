@@ -1,17 +1,17 @@
-from datetime import datetime, timedelta, timezone
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import sys
 import time
-from typing import Any, Dict, Optional
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
-from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 import httpx
 import weaviate
+from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 from weaviate.classes.query import Filter, Sort
 
 from includes.weschema import COPERTINE_COLL_CONFIG
@@ -31,11 +31,9 @@ logger = logging.getLogger(__name__)
 HTTP_STATUS_OK = 200
 SEPARATOR_LINE = "-" * 50
 OUTPUT_FILE = Path("manifesto_archive.json")
-IMAGES_DIR = Path("/home/mema/code/copertinefull/images")
 MISSING_ENV_VAR_MSG = "COPERTINE_OLDEST_DATE environment variable must be set (format: YYYY-MM-DD)"
 INVALID_DATE_FORMAT_MSG = "Invalid start date format. Expected YYYY-MM-DD."
-
-
+MISSING_IMAGES_DIR_MSG = "COP_IMAGES_DIR environment variable must be set"
 
 class ManifestoScraper:
     def __init__(self):
@@ -46,16 +44,21 @@ class ManifestoScraper:
         # Initialize Weaviate client
         self.client = self._init_weaviate_client()
         self.collection = self._ensure_collection()
+        # Get images directory from environment
+        images_dir_str = os.getenv("COP_IMAGES_DIR")
+        if not images_dir_str:
+            raise ValueError(MISSING_IMAGES_DIR_MSG)
+        self.images_dir = Path(images_dir_str)
         # Create images directory
-        IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+        self.images_dir.mkdir(parents=True, exist_ok=True)
         # Check if JSON saving is enabled
         self.save_to_json = os.getenv("COP_SAVE_TO_JSON", "false").lower() == "true"
-
 
     def _init_weaviate_client(self) -> weaviate.WeaviateClient:
         """Initialize Weaviate client with error handling"""
         try:
-            if os.getenv("COP_WEAVIATE_URL") == "localhost":
+            weaviate_url = os.getenv("COP_WEAVIATE_URL", "")
+            if weaviate_url in ["localhost", "127.0.0.1"]:
                 return weaviate.connect_to_local()
 
             return weaviate.connect_to_wcs(
@@ -68,22 +71,24 @@ class ManifestoScraper:
 
     def _ensure_collection(self):
         """Ensure the Copertine collection exists in Weaviate"""
-        COP_COPERTINE_COLLNAME = os.getenv("COP_COPERTINE_COLLNAME")
+        cop_copertine_collname = os.getenv("COP_COPERTINE_COLLNAME")
         collection = None
 
         try:
             # Check if collection exists
-            if COP_COPERTINE_COLLNAME not in self.client.collections.list_all():
+            collections = self.client.collections.list_all()
+            if cop_copertine_collname not in collections:
                 collection = self.client.collections.create(
-                    name=COPERTINE_COLL_CONFIG["class"],
+                    name=cop_copertine_collname,
                     description=COPERTINE_COLL_CONFIG["description"],
+                    vectorizer_config=None,
                     properties=COPERTINE_COLL_CONFIG["properties"],
                 )
-                logger.info("Created %s collection in Weaviate", COP_COPERTINE_COLLNAME)
+                logger.info("Created %s collection in Weaviate", cop_copertine_collname)
             else:
-                collection = self.client.collections.get(COP_COPERTINE_COLLNAME)
+                collection = self.client.collections.get(cop_copertine_collname)
         except Exception:
-            logger.exception("Failed to create collection: %s", COP_COPERTINE_COLLNAME)
+            logger.exception("Failed to create collection: %s", cop_copertine_collname)
             raise
 
         return collection
@@ -140,34 +145,96 @@ class ManifestoScraper:
 
         return f"il-manifesto_{formatted_date}_{image_path}"
 
-    def extract_page_info(self, html_content: str) -> Dict[str, Any]:
+    def _find_main_article(self, articles: list) -> BeautifulSoup | None:
+        """Find the main article from a list of articles."""
+        for article in articles:
+            if not self._has_required_elements(article):
+                continue
+            
+            logger.info("Found main article with category: %s", 
+                       article.select_one("a.text-red-500").get_text().strip())
+            return article
+        
+        logger.warning("No main article found")
+        return None
+
+    def _has_required_elements(self, article: BeautifulSoup) -> bool:
+        """Check if article has all required elements."""
+        # Check image container and image
+        img_container = article.select_one("div.w-full.overflow-hidden.order-1")
+        if not img_container:
+            return False
+
+        img_tag = img_container.select_one("img[src*='static.ilmanifesto.it'], img[src*='/cdn-cgi/image']")
+        if not img_tag:
+            return False
+
+        # Check category and title
+        if not article.select_one("a.text-red-500"):
+            return False
+
+        if not article.find("h3"):
+            return False
+
+        return True
+
+    def _extract_title(self, article: BeautifulSoup) -> str | None:
+        """Extract title from article."""
+        for title_selector in ["h1", "h2", "h3"]:
+            title_tag = article.find(title_selector)
+            if title_tag:
+                title = title_tag.get_text().strip()
+                logger.info("Found title with selector %s: %s", title_selector, title)
+                return title
+        return None
+
+    def _extract_body(self, article: BeautifulSoup) -> str | None:
+        """Extract body text from article."""
+        body_tag = article.select_one("p.body-ns-1")
+        if body_tag:
+            # Get the text but exclude any overline text
+            overline = body_tag.select_one("span.overline-3")
+            if overline:
+                overline.decompose()
+            body = body_tag.get_text().strip()
+            logger.info("Found body text")
+            return body
+        return None
+
+    def extract_page_info(self, html_content: str) -> dict[str, Any]:
         """Extract information from the page HTML"""
         soup = BeautifulSoup(html_content, "html.parser")
-        opening_section = soup.find("div", class_="Opening3")
+        logger.info("Page title: %s", soup.title.string if soup.title else "No title found")
 
-        if not opening_section:
+        # Find all articles
+        articles = soup.find_all("article", class_="PostCard")
+        if not articles:
+            logger.warning("No articles found")
             return {}
 
-        article = opening_section.find("article")
-        if not article:
+        main_article = self._find_main_article(articles)
+        if not main_article:
             return {}
 
-        img_tag = article.find("img")
+        # Get the image URL
+        img_tag = main_article.select_one("img[src*='static.ilmanifesto.it'], img[src*='/cdn-cgi/image']")
         image_url = img_tag.get("src") if img_tag else None
+        logger.info("Found image URL: %s", image_url)
 
-        title_tag = article.find("h3")
-        title = title_tag.get_text().strip() if title_tag else None
-
-        body_tag = article.find("p")
-        body = body_tag.get_text().strip() if body_tag else None
+        # Get the author
+        author_tag = main_article.select_one("span.font-serif.text-sm.italic")
+        author = author_tag.get_text().strip() if author_tag else None
+        if author:
+            logger.info("Found author: %s", author)
 
         return {
             "image_url": image_url,
-            "title": title,
-            "body": body,
+            "title": self._extract_title(main_article),
+            "author": author,
+            "body": self._extract_body(main_article),
         }
 
-    def store_in_weaviate(self, date_str: str, page_info: Dict[str, Any], image_filename: str):
+    def store_in_weaviate(self, date_str: str, page_info: dict[str, Any], image_filename: str):
         """Store scraped data in Weaviate"""
         try:
             # Convert DD-MM-YYYY to ISO datetime
@@ -177,10 +244,15 @@ class ManifestoScraper:
             # Get title and body
             title = page_info.get("title", "")
             body = page_info.get("body", "")
+            author = page_info.get("author", "")
 
             # If body starts with title, remove title and any following whitespace
             if title and body.startswith(title):
                 body = body[len(title):].lstrip()
+
+            # If author is in the body, remove it
+            if author and body.startswith(author):
+                body = body[len(author):].lstrip()
 
             data = {
                 "testataName": "Il Manifesto",
@@ -220,7 +292,7 @@ class ManifestoScraper:
         else:
             return response.status_code == HTTP_STATUS_OK
 
-    def check_and_get_edition(self, client: httpx.Client, url: str, date_str: str) -> tuple[bool, Optional[httpx.Response]]:
+    def check_and_get_edition(self, client: httpx.Client, url: str, date_str: str) -> tuple[bool, httpx.Response | None]:
         """Check if edition exists at URL and hasn't been processed yet."""
         edition_exists = self.check_url_exists(client, url)
 
@@ -244,12 +316,15 @@ class ManifestoScraper:
         else:
             return True, response
 
-    def fetch_manifesto_edition_data(self, newest_date: datetime, oldest_date: datetime) -> Optional[Dict[str, Any]]:
+    def fetch_manifesto_edition_data(self, newest_date: datetime, oldest_date: datetime) -> dict[str, Any] | None:
         """Check historical il manifesto URLs and extract content, starting from newest to oldest"""
         base_url = "https://ilmanifesto.it/edizioni/il-manifesto/il-manifesto-del-{}"
         results = {}
 
-        client = httpx.Client(timeout=10.0, follow_redirects=True)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        client = httpx.Client(timeout=30.0, follow_redirects=True, headers=headers)
 
         try:
             # Start from newest_date and iterate backwards towards oldest_date
@@ -257,6 +332,7 @@ class ManifestoScraper:
             while current_date >= oldest_date:
                 date_str = current_date.strftime("%d-%m-%Y")
                 url = base_url.format(date_str)
+                logger.info("Trying URL: %s", url)
 
                 should_process, response = self.check_and_get_edition(client, url, date_str)
 
@@ -270,7 +346,7 @@ class ManifestoScraper:
                             date_str,
                         )
                         if image_filename:
-                            image_path = IMAGES_DIR / image_filename
+                            image_path = self.images_dir / image_filename
                             if self.download_image(client, page_info["image_url"], image_path):
                                 page_info["saved_image"] = str(image_path)
                                 logger.info("Downloaded image to %s", image_path)
@@ -280,15 +356,16 @@ class ManifestoScraper:
                         if self.save_to_json:
                             results[date_str] = page_info
                             logger.info(
-                                "Date: %s\nTitle: %s\nImage: %s\nBody: %s\n%s",
+                                "Date: %s\nTitle: %s\nAuthor: %s\nImage: %s\nBody: %s\n%s",
                                 date_str,
                                 page_info.get("title"),
+                                page_info.get("author"),
                                 page_info.get("image_url"),
                                 page_info.get("body"),
                                 SEPARATOR_LINE,
                             )
                     else:
-                        logger.warning("No Opening3 section found for %s", date_str)
+                        logger.warning("No article content found for %s", date_str)
 
                 time.sleep(1)
                 current_date -= timedelta(days=1)
@@ -309,7 +386,7 @@ class ManifestoScraper:
         if hasattr(self, "client"):
             self.client.close()
 
-    def get_most_recent_edition_date(self) -> Optional[datetime]:
+    def get_most_recent_edition_date(self) -> datetime | None:
         """Get the most recent edition date from Weaviate collection"""
         try:
             # Query with sort by editionDateIsoStr in descending order

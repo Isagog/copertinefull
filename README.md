@@ -6,56 +6,154 @@ A full stack application to archive and search through the opening stories ("cop
 
 This project provides a searchable archive of Il Manifesto's opening stories, with automated daily updates and a modern web interface.
 
+## System Dependencies
+
+1. **External Systems**
+   - Il Manifesto digital edition webpage (source of daily articles)
+   - Host filesystem with `/images` directory
+   - Weaviate vector database with `Copertine` collection
+
+2. **Infrastructure Requirements**
+   - Docker and Docker Compose
+   - Nginx server
+   - Crontab for scheduling
+   - Network connectivity to Il Manifesto website
+
 ## Architecture
 
 The system consists of three main components:
 
-1. **Frontend** (Next.js 14)
+1. **Batch Scraper**
+   - Runs daily at 5:00 AM (Tuesday through Sunday)
+   - Heuristically extracts opening article content:
+     - Article title
+     - Article kicker
+     - Associated image
+   - Saves images to `/images` directory
+   - Stores metadata in Weaviate collection
+   - Automated via crontab
+
+2. **Backend Service (Python FastAPI)**
+   - REST API for searching copertine
+   - Interfaces with Weaviate vector database
+   - Handles image processing and metadata extraction
+   - Runs in Docker container on port 8383
+   - Returns consolidated response with:
+     - Article title
+     - Article kicker
+     - Image file path
+
+3. **Frontend Application (Next.js 14)**
    - Web interface for browsing and searching copertine
    - Built with Next.js 14 and TypeScript
    - Uses pnpm for package management
    - Features server-side rendering and image caching
    - Runs in Docker container on port 3737
 
-2. **Backend** (Python FastAPI)
-   - REST API for searching copertine
-   - Interfaces with Weaviate vector database
-   - Handles image processing and metadata extraction
-   - Runs in Docker container on port 8383
-
-3. **Database** (Weaviate)
+4. **Database (Weaviate)**
    - Vector database storing copertine metadata and search indices
    - Connected via Docker network
    - Provides strong BM25F text search capabilities
 
+## System Architecture
+
+### Component Interaction Diagram
+```mermaid
+graph LR
+    IM[Il Manifesto] --> BS[Batch Scraper]
+    BS --> W[(Weaviate)]
+    BS --> FS[/Images/]
+    BE[Backend :8383] --> W
+    BE --> FS
+    FE[Frontend :3737] --> BE
+```
+
+### Daily Update Process
+```mermaid
+sequenceDiagram
+    participant C as Cron
+    participant S as Scraper
+    participant IM as Manifesto
+    participant W as Weaviate
+    participant FS as Files
+    C->>S: Daily scrape
+    S->>IM: Fetch edition
+    S->>W: Store metadata
+    S->>FS: Save image
+    C->>C: Restart app
+```
+
+## Data Flow
+
+1. **Collection (Daily)**
+   - Scraper fetches Il Manifesto digital edition
+   - Extracts opening article content
+   - Stores image in filesystem
+   - Saves metadata to Weaviate
+
+2. **Retrieval**
+   - Frontend sends search/browse requests
+   - Backend queries Weaviate collection
+   - Returns consolidated response
+   - Frontend displays results with image previews
+
 ## Setup
 
-### Prerequisites
-- Docker and Docker Compose
-- Nginx server
-- Crontab access
-- Weaviate instance
+### System Requirements
 
-### Environment Configuration
+1. **Hardware Requirements**
+   - Sufficient disk space for image storage in `/images` directory
+   - Minimum 4GB RAM recommended for Docker containers
+   - Network connectivity to Il Manifesto website
 
-Backend environment variables (.env):
-```
-COP_WEAVIATE_URL=127.0.0.1
-COP_WEAVIATE_API_KEY=your_weaviate_api_key
-COP_COPERTINE_COLLNAME=Copertine
-COP_VISION_MODELNAME=gpt-4-vision-preview
-COP_OLDEST_DATE=2013-03-27
-```
+2. **Software Prerequisites**
+   - Docker Engine 20.10+
+   - Docker Compose 2.0+
+   - Nginx 1.18+
+   - Crontab access
+   - Weaviate 1.19+ instance
 
-### Installation
+### Initial Setup
 
-1. Clone the repository
-2. Configure environment variables
-3. Start services:
-```bash
-docker-compose up -d copback
-docker-compose up -d copfront
-```
+1. **Repository Setup**
+   ```bash
+   git clone [repository-url]
+   cd copertinefull
+   ```
+
+2. **Directory Structure**
+   ```
+   copertinefull/
+   ├── images/           # Image storage directory
+   ├── frontend/         # Next.js frontend application
+   ├── backend/         # FastAPI backend service
+   └── docker-compose.yml
+   ```
+
+3. **Environment Configuration**
+   Create `.env` file in the backend directory:
+   ```env
+   COP_WEAVIATE_URL=127.0.0.1
+   COP_WEAVIATE_API_KEY=your_weaviate_api_key
+   COP_COPERTINE_COLLNAME=Copertine
+   COP_VISION_MODELNAME=gpt-4-vision-preview
+   COP_OLDEST_DATE=2013-03-27
+   ```
+
+### Container Deployment
+
+1. **Start Services**
+   ```bash
+   docker-compose up -d copback    # Start backend service
+   docker-compose up -d copfront   # Start frontend service
+   ```
+
+2. **Verify Deployment**
+   ```bash
+   docker-compose ps               # Check container status
+   curl http://localhost:8383/health  # Verify backend health
+   curl http://localhost:3737         # Verify frontend access
+   ```
 
 ### Nginx Configuration
 
@@ -85,12 +183,7 @@ Add to your Nginx configuration:
             deny all;
         }
 
-        # Optional: Enable compression for JPEG if not already compressed
-        # gzip on;
-        # gzip_types image/jpeg;
-        # gzip_min_length 1024;
-
-        # Optional but recommended: Cross-Origin settings
+        # Optional: Cross-Origin settings
         add_header Access-Control-Allow-Origin "https://dev.isagog.com";
         add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
         add_header Timing-Allow-Origin "https://dev.isagog.com";
@@ -103,7 +196,7 @@ Add to your Nginx configuration:
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        # Updated Permissions-Policy with only widely supported features
+        # Updated Permissions-Policy
         add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()";
         proxy_redirect off;
         proxy_http_version 1.1;
@@ -112,30 +205,45 @@ Add to your Nginx configuration:
     }
 ```
 
-### Automated Updates
+### Automated Updates Setup
 
-Add to crontab (runs at 5:00 AM, Tuesday through Sunday):
-```bash
-# scrape the new Il Manifesto edition article (copertine) and save the image on filesystem and the data in weaviate
-0 5 * * 2-7 /home/mema/code/copertinefull/refreshbind.sh  >> /home/mema/code/copertinefull/backend/scrape2.log 2>&1
-```
-where refreshbind.sh is:
-```bash
-#!/bin/bash
+1. **Create Update Script**
+   Create `refreshbind.sh` in project root:
+   ```bash
+   #!/bin/bash
 
-# Run the scraping process
-/home/mema/code/copertinefull/backend/.venv/bin/python /home/mema/code/copertinefull/backend/src/scrape2.py
+   # Run the scraping process
+   /home/mema/code/copertinefull/backend/.venv/bin/python /home/mema/code/copertinefull/backend/src/scrape2.py
 
-# Restart the container
-/usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ stop copfront
-/usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ start copfront
-```
+   # Restart the container
+   /usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ stop copfront
+   /usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ start copfront
+   ```
 
-The update process:
-1. Scrapes the latest copertina
-2. Saves image to /images directory
-3. Extracts metadata to Weaviate
-4. Restarts frontend container to clear caches
+2. **Make Script Executable**
+   ```bash
+   chmod +x refreshbind.sh
+   ```
+
+3. **Configure Crontab**
+   Add to crontab (runs at 5:00 AM, Tuesday through Sunday):
+   ```bash
+   0 5 * * 2-7 /home/mema/code/copertinefull/refreshbind.sh >> /home/mema/code/copertinefull/backend/scrape2.log 2>&1
+   ```
+
+### Verification
+
+1. **Test Scraper**
+   ```bash
+   ./refreshbind.sh  # Run manual scrape
+   ls -l images/     # Check for new images
+   ```
+
+2. **Monitor Logs**
+   ```bash
+   tail -f backend/scrape2.log  # Check scraper logs
+   docker-compose logs -f       # Check container logs
+   ```
 
 ## Development
 
@@ -152,23 +260,6 @@ The update process:
 - Poetry for dependency management
 - Weaviate integration
 - Docker container with mounted volumes
-
-## Data Flow
-
-1. Daily scraper collects new copertine
-2. Images stored in filesystem
-3. Metadata stored in Weaviate
-4. Frontend serves browsing interface
-5. Backend handles search requests
-6. Nginx routes requests appropriately
-
-## Docker Setup
-
-Services run in containers:
-- Frontend: port 3737
-- Backend: port 8383
-- Shared Docker network with Weaviate
-- Mounted volumes for image storage
 
 ## Features
 
