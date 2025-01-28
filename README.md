@@ -59,28 +59,44 @@ The system consists of three main components:
 
 ### Component Interaction Diagram
 \`\`\`mermaid
-graph TB
-    IM[Il Manifesto Digital Edition] -->|Daily Scraping| BS[Batch Scraper]
-    subgraph External Dependencies
-        IM
+graph LR
+    subgraph Data Sources
+        IM[Il Manifesto Digital Edition]
     end
-    subgraph Storage
-        W[(Weaviate Collection<br/>Copertine)]
-        FS[/Host Filesystem<br/>/images/]
+
+    subgraph Processing
+        BS[Batch Scraper]
     end
-    subgraph Application Components
-        BS -->|Store Metadata| W
-        BS -->|Store Images| FS
-        BE[FastAPI Backend<br/>:8383] -->|Query| W
-        BE -->|Read| FS
-        FE[Next.js Frontend<br/>:3737] -->|API Requests| BE
+
+    subgraph Storage Layer
+        W[(Weaviate DB)]
+        FS[/Images/]
     end
-    style IM fill:#f9f,stroke:#333
-    style W fill:#bbf,stroke:#333
-    style FS fill:#bbf,stroke:#333
-    style BS fill:#bfb,stroke:#333
-    style BE fill:#bfb,stroke:#333
-    style FE fill:#bfb,stroke:#333
+
+    subgraph Application Layer
+        BE[Backend API<br/>:8383]
+        FE[Frontend<br/>:3737]
+    end
+
+    %% Data flow connections
+    IM -->|Daily Scrape| BS
+    BS -->|Store Metadata| W
+    BS -->|Store Images| FS
+    BE -->|Query| W
+    BE -->|Read| FS
+    FE -->|API Requests| BE
+
+    %% Styling for better contrast and readability
+    style IM fill:#ffd7e8,stroke:#333
+    style W fill:#d7e8ff,stroke:#333
+    style FS fill:#d7e8ff,stroke:#333
+    style BS fill:#d7ffd7,stroke:#333
+    style BE fill:#d7ffd7,stroke:#333
+    style FE fill:#d7ffd7,stroke:#333
+
+    %% Clearer subgraph styling
+    classDef subgraphStyle fill:#f5f5f5,stroke:#666
+    class Data Sources,Processing,Storage Layer,Application Layer subgraphStyle
 \`\`\`
 
 ### Daily Update Process
@@ -94,14 +110,30 @@ sequenceDiagram
     participant D as Docker
 
     C->>S: Trigger daily scrape (5:00 AM)
-    S->>IM: Fetch digital edition
-    S->>S: Extract article content<br/>(heuristic analysis)
-    par Storage Operations
-        S->>W: Store title & kicker
-        S->>FS: Save image to /images
+    
+    rect rgb(240, 240, 240)
+        Note right of S: Main Process
+        S->>IM: Fetch digital edition
+        alt Success
+            S->>S: Extract article content<br/>(heuristic analysis)
+            par Storage Operations
+                S->>W: Store title & kicker
+                Note over S,W: Retries on failure
+                S->>FS: Save image to /images
+                Note over S,FS: Validates image
+            end
+        else Error
+            S-->>C: Log error & exit
+        end
     end
-    C->>D: Restart frontend container
-    Note over D: Clear caches
+
+    rect rgb(240, 240, 240)
+        Note right of C: Cleanup Process
+        C->>D: Restart frontend container
+        D->>D: Clear page cache
+        D->>D: Clear image cache
+        Note over D: Verify container health
+    end
 \`\`\`
 
 ## Data Flow
