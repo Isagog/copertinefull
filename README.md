@@ -58,7 +58,7 @@ The system consists of three main components:
 ## System Architecture
 
 ### Component Interaction Diagram
-\`\`\`mermaid
+```mermaid
 graph LR
     subgraph Data Sources
         IM[Il Manifesto Digital Edition]
@@ -97,10 +97,10 @@ graph LR
     %% Clearer subgraph styling
     classDef subgraphStyle fill:#f5f5f5,stroke:#666
     class Data Sources,Processing,Storage Layer,Application Layer subgraphStyle
-\`\`\`
+```
 
 ### Daily Update Process
-\`\`\`mermaid
+```mermaid
 sequenceDiagram
     participant C as Crontab
     participant S as Batch Scraper
@@ -134,7 +134,7 @@ sequenceDiagram
         D->>D: Clear image cache
         Note over D: Verify container health
     end
-\`\`\`
+```
 
 ## Data Flow
 
@@ -169,49 +169,49 @@ sequenceDiagram
 ### Initial Setup
 
 1. **Repository Setup**
-   \`\`\`bash
+   ```bash
    git clone [repository-url]
    cd copertinefull
-   \`\`\`
+   ```
 
 2. **Directory Structure**
-   \`\`\`
+   ```
    copertinefull/
    ├── images/           # Image storage directory
    ├── frontend/         # Next.js frontend application
    ├── backend/         # FastAPI backend service
    └── docker-compose.yml
-   \`\`\`
+   ```
 
 3. **Environment Configuration**
-   Create \`.env\` file in the backend directory:
-   \`\`\`env
+   Create `.env` file in the backend directory:
+   ```env
    COP_WEAVIATE_URL=127.0.0.1
    COP_WEAVIATE_API_KEY=your_weaviate_api_key
    COP_COPERTINE_COLLNAME=Copertine
    COP_VISION_MODELNAME=gpt-4-vision-preview
    COP_OLDEST_DATE=2013-03-27
-   \`\`\`
+   ```
 
 ### Container Deployment
 
 1. **Start Services**
-   \`\`\`bash
+   ```bash
    docker-compose up -d copback    # Start backend service
    docker-compose up -d copfront   # Start frontend service
-   \`\`\`
+   ```
 
 2. **Verify Deployment**
-   \`\`\`bash
+   ```bash
    docker-compose ps               # Check container status
    curl http://localhost:8383/health  # Verify backend health
    curl http://localhost:3737         # Verify frontend access
-   \`\`\`
+   ```
 
 ### Nginx Configuration
 
 Add to your Nginx configuration:
-\`\`\`nginx
+```nginx
     location /images/ {
         alias /home/mema/code/copertinefull/images/;
         http2_push_preload on;
@@ -256,13 +256,13 @@ Add to your Nginx configuration:
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
     }
-\`\`\`
+```
 
 ### Automated Updates Setup
 
 1. **Create Update Script**
-   Create \`refreshbind.sh\` in project root:
-   \`\`\`bash
+   Create `refreshbind.sh` in project root:
+   ```bash
    #!/bin/bash
 
    # Run the scraping process
@@ -271,44 +271,44 @@ Add to your Nginx configuration:
    # Restart the container
    /usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ stop copfront
    /usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ start copfront
-   \`\`\`
+   ```
 
 2. **Make Script Executable**
-   \`\`\`bash
+   ```bash
    chmod +x refreshbind.sh
-   \`\`\`
+   ```
 
 3. **Configure Crontab**
    Add to crontab (runs at 5:00 AM, Tuesday through Sunday):
-   \`\`\`bash
+   ```bash
    0 5 * * 2-7 /home/mema/code/copertinefull/refreshbind.sh >> /home/mema/code/copertinefull/backend/scrape2.log 2>&1
-   \`\`\`
+   ```
 
 ### Verification
 
 1. **Test Scraper**
-   \`\`\`bash
+   ```bash
    ./refreshbind.sh  # Run manual scrape
    ls -l images/     # Check for new images
-   \`\`\`
+   ```
 
 2. **Monitor Logs**
-   \`\`\`bash
+   ```bash
    tail -f backend/scrape2.log  # Check scraper logs
    docker-compose logs -f       # Check container logs
-   \`\`\`
+   ```
 
 ## Development
 
 ### Frontend
-- Located in \`/frontend\`
+- Located in `/frontend`
 - Next.js 14 with TypeScript
 - Tailwind CSS for styling
 - Client-side caching for performance
 - Docker container with mounted volumes
 
 ### Backend
-- Located in \`/backend\`
+- Located in `/backend`
 - FastAPI application
 - Poetry for dependency management
 - Weaviate integration
