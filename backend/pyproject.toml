@@ -17,6 +17,18 @@ pydantic = "^2.10.4"
 requests = "^2.32.3"
 fastapi = "^0.115.6"
 uvicorn = "^0.34.0"
+sqlalchemy = "^2.0.25"
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+bcrypt = "4.0.1"  # Pin to a specific version that works with passlib
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+fastapi-mail = "^1.4.1"
+python-multipart = "^0.0.9"
+alembic = "^1.13.1"
+click = "^8.1.7"
+pyjwt = "^2.10.1"
+
+[tool.poetry.scripts]
+copertine = "src.cli:cli"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.6"

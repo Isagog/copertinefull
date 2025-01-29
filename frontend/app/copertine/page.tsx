@@ -1,6 +1,8 @@
-"use client";
+'use client';
 
-import React from "react";
+import React from 'react';
+import { useAuth } from '@/app/context/auth-context';
+import { withProtectedRoute } from '@/app/components/auth/ProtectedRoute';
 import { ChevronUp, ChevronDown } from "lucide-react";
 import CopertinaCard from "../components/copertina/CopertinaCard";
 import PaginationControls from "../components/PaginationControls";
@@ -20,7 +22,8 @@ interface SearchResultsEvent {
   searchTerm: string;
 }
 
-export default function Home() {
+function CopertinePage() {
+  const { logout } = useAuth();
   // State declarations
   const [copertine, setCopertine] = React.useState<CopertineEntry[]>([]);
   const [originalOrder, setOriginalOrder] = React.useState<CopertineEntry[]>([]);
@@ -183,6 +186,17 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Add logout button */}
+      <div className="bg-white dark:bg-gray-800 shadow">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex justify-end">
+          <button
+            onClick={logout}
+            className="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
       <section className="max-w-4xl mx-auto px-4 py-6">
         {error ? (
           <div className="flex flex-col items-center justify-center min-h-[400px]">
@@ -194,6 +208,7 @@ export default function Home() {
                 {error.includes("Weaviate")
                   ? error
                   : "The Weaviate database is currently unavailable. Please check your connection and try again."}
+
               </div>
             </div>
           </div>
@@ -311,3 +326,5 @@ export default function Home() {
     </div>
   );
 }
+
+export default withProtectedRoute(CopertinePage);

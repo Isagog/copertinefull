@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { Inter as FontSans } from "next/font/google";
 import { ThemeProvider } from "../providers/theme-provider";
+import { AuthProvider } from "./context/auth-context";
 import "./globals.css";
 
 const fontSans = FontSans({
@@ -26,7 +27,9 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <ThemeProvider defaultTheme="light">
-          {children}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
