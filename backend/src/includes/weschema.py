@@ -1,84 +1,60 @@
-# weschema.py
-import os
+import weaviate
+from typing import Optional
 
-from dotenv import load_dotenv
-from weaviate.classes.config import DataType, Property, Tokenization
+def get_weaviate_client() -> weaviate.Client:
+    """Get a configured Weaviate client."""
+    client = weaviate.Client(
+        url="http://localhost:8080",  # Default Weaviate instance URL
+    )
+    return client
 
-# Load environment variables from the .env file
-load_dotenv()
+def init_schema(client: Optional[weaviate.Client] = None) -> None:
+    """Initialize the Weaviate schema if it doesn't exist."""
+    if client is None:
+        client = get_weaviate_client()
 
-"""
-Property level config
-"indexFilterable": true,              // Optional, default is true. By default each property is indexed with a roaring bitmap index where available for efficient filtering.
-"indexSearchable": true               // Optional, default is true. By default each property is indexed with a searchable index for BM25-suitable Map index for BM25 or hybrid searching.
-"""
+    # Check if schema exists
+    schema = client.schema.get()
+    if any(cls['class'] == 'Copertine' for cls in schema['classes']):
+        return
 
-# Fetch class names from environment variables
-COP_COPERTINE_COLLNAME = os.getenv(
-    "COP_COPERTINE_COLLNAME", "Copertine",
-)  # Default to "Copertine" if not set
+    # Define schema for Copertine
+    copertine_class = {
+        'class': 'Copertine',
+        'description': 'Schema for Il Manifesto covers',
+        'properties': [
+            {
+                'name': 'captionStr',
+                'dataType': ['text'],
+                'description': 'The caption text of the cover'
+            },
+            {
+                'name': 'editionDateIsoStr',
+                'dataType': ['date'],
+                'description': 'The publication date of the edition'
+            },
+            {
+                'name': 'editionId',
+                'dataType': ['string'],
+                'description': 'Unique identifier for the edition'
+            },
+            {
+                'name': 'editionImageFnStr',
+                'dataType': ['string'],
+                'description': 'Filename of the cover image'
+            },
+            {
+                'name': 'kickerStr',
+                'dataType': ['text'],
+                'description': 'The kicker text of the cover'
+            },
+            {
+                'name': 'testataName',
+                'dataType': ['string'],
+                'description': 'The name of the publication'
+            }
+        ]
+    }
 
-COPERTINE_COLL_CONFIG = {
-    "class": COP_COPERTINE_COLLNAME,
-    "description": "Collection of Il Manifesto newspaper covers",
-    "vectorizer": "none",
-    "properties": [
-        Property(
-            name="testataName",
-            description="Name of the publication",
-            data_type=DataType.TEXT,
-            tokenization=Tokenization.FIELD,
-            index_searchable=False,
-        ),
-        Property(
-            name="editionId",
-            description="Unique identifier for the edition",
-            data_type=DataType.TEXT,
-            tokenization=Tokenization.FIELD,
-            index_searchable=False,
-        ),
-        Property(
-            name="editionDateIsoStr",
-            description="Publication date of the edition",
-            data_type=DataType.DATE,
-        ),
-        Property(
-            name="editionImageFnStr",
-            description="Filename of the edition image",
-            data_type=DataType.TEXT,
-            tokenization=Tokenization.FIELD,
-            index_searchable=False,
-        ),
-        Property(
-            name="captionStr",
-            description="Text scraped as the caption",
-            data_type=DataType.TEXT,
-            index_filterable=False,
-        ),
-        Property(
-            name="kickerStr",
-            description="Text scraped describing the news",
-            data_type=DataType.TEXT,
-            index_filterable=False,
-        ),
-        Property(
-            name="captionAIStr",
-            description="Text recognized by AI as the caption",
-            data_type=DataType.TEXT,
-            index_filterable=False,
-        ),
-        Property(
-            name="imageAIDeStr",
-            description="AI generated description of the image",
-            data_type=DataType.TEXT,
-            index_filterable=False,
-        ),
-        Property(
-            name="modelAIName",
-            description="Name of the LLM model used for extraction and description",
-            data_type=DataType.TEXT,
-            tokenization=Tokenization.FIELD,
-            index_searchable=False,
-        ),
-    ],
-}
+    # Create schema
+    client.schema.create_class(copertine_class)

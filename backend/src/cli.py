@@ -4,6 +4,7 @@ from alembic import command
 import os
 import secrets
 from pathlib import Path
+from sqlalchemy import create_engine, text
 
 @click.group()
 def cli():
@@ -21,17 +22,6 @@ def init_db():
 
         # Run migrations
         alembic_cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
-        
-        # Check current revision
-        with alembic_cfg.get_engine().connect() as connection:
-            context = command.get_context(alembic_cfg, connection)
-            current_rev = context.get_current_revision()
-            
-            if current_rev:
-                click.echo("Database is already initialized.")
-                click.echo("To reset the database, use: copertine-cli reset-db")
-                return
-        
         command.upgrade(alembic_cfg, "head")
         click.echo("Database initialized successfully!")
     except Exception as e:
@@ -46,14 +36,28 @@ def reset_db():
         return
     
     try:
+        # Get database path from alembic.ini
         alembic_cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
+        db_url = alembic_cfg.get_main_option("sqlalchemy.url")
+        
+        # Create engine
+        engine = create_engine(db_url)
         
         # Drop all tables
-        command.downgrade(alembic_cfg, "base")
+        with engine.connect() as conn:
+            # Get all table names
+            tables = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"))
+            table_names = [table[0] for table in tables]
+            
+            # Drop each table
+            for table in table_names:
+                conn.execute(text(f"DROP TABLE IF EXISTS {table};"))
+            conn.commit()
+            
+            click.echo(f"Dropped tables: {', '.join(table_names)}")
         
-        # Recreate tables
+        # Run migrations to create fresh tables
         command.upgrade(alembic_cfg, "head")
-        
         click.echo("Database reset successfully!")
     except Exception as e:
         click.echo(f"Error resetting database: {str(e)}", err=True)

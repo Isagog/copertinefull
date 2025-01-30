@@ -1,9 +1,18 @@
 // app/lib/config/constants.ts
 export const API = {
-    FASTAPI_URL: process.env.FASTAPI_URL || 'http://localhost:8008',
+    BACKEND_URL: process.env.COP_BACKEND_URL || 'http://localhost:8000',
     WEAVIATE_SCHEME: process.env.WEAVIATE_SCHEME || 'http',
     WEAVIATE_HOST: process.env.WEAVIATE_HOST || 'localhost:8080'
 } as const;
+
+// Log environment variables in development
+if (process.env.NODE_ENV === 'development') {
+    console.log('[constants] Environment variables:', {
+        COP_BACKEND_URL: process.env.COP_BACKEND_URL,
+        NODE_ENV: process.env.NODE_ENV,
+        APP_URL: process.env.NEXT_PUBLIC_APP_URL
+    });
+}
 
 export const PAGINATION = {
     ITEMS_PER_PAGE: 30,

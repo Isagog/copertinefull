@@ -3,7 +3,9 @@ name = "copertine3"
 version = "0.1.0"
 description = ""
 authors = ["Robert Alexander <gogonegro@gmail.com>"]
-package-mode = false
+packages = [
+    { include = "src" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"

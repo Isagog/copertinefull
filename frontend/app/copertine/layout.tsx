@@ -1,29 +1,39 @@
-import { Suspense } from "react";
-import Header from "../components/header/Header";
-import SearchSection from "../components/searchsection/SearchSection";
+/**
+ * Path: frontend/app/copertine/layout.tsx
+ * Description: Layout component for the main copertine section
+ * Handles auth protection and layout structure for the copertine pages
+ */
 
-export default function CopertineLayout({
+import { Metadata } from 'next';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import Header from '@/app/components/header/Header';
+
+export const metadata: Metadata = {
+  title: 'Copertine - Il Manifesto',
+  description: 'Archivio storico delle copertine de Il Manifesto',
+};
+
+export default async function CopertineLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const cookieStore = await cookies();
+  const hasToken = cookieStore.has('token');
+
+  if (!hasToken) {
+    redirect('/copertine/auth/login');
+  }
+
   return (
     <>
       <Header />
-      <SearchSection />
-      <main>
-        <Suspense
-          fallback={
-            <div className="min-h-[calc(100vh-176px)] flex flex-col items-center justify-center">
-              <div className="animate-pulse text-blue-700 text-lg">
-                Caricamento...
-              </div>
-            </div>
-          }
-        >
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {children}
-        </Suspense>
-      </main>
+        </div>
+      </div>
     </>
   );
 }

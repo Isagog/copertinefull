@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import auth
+from .routes import auth, copertine
 from .includes.database import Base, engine
 from .middleware.auth import auth_middleware
 
@@ -29,6 +29,7 @@ app.middleware("http")(auth_middleware)
 
 # Include routers
 app.include_router(auth.router)
+app.include_router(copertine.router)
 
 # Health check endpoint
 @app.get("/health")

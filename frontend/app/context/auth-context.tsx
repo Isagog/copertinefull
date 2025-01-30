@@ -1,49 +1,29 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { API } from '@app/lib/config/constants';
+import type { User, AuthContextType } from '@app/types/auth';
 
-interface User {
-  id: string;
-  email: string;
-  is_active: boolean;
-  last_login: string | null;
-}
-
-interface AuthContextType {
-  user: User | null;
-  login: (token: string) => void;
-  logout: () => void;
-  isAuthenticated: boolean;
-  token: string | null;
-}
-
-const AuthContext = createContext<AuthContextType>({
+export const AuthContext = createContext<AuthContextType>({
   user: null,
-  login: () => {},
-  logout: () => {},
+  login: async () => {},
+  logout: async () => {},
   isAuthenticated: false,
   token: null,
+  isInitialized: false,
 });
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+function useAuthState() {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
-
-  useEffect(() => {
-    // Check for token in localStorage on mount
-    const storedToken = localStorage.getItem('token');
-    if (storedToken) {
-      setToken(storedToken);
-      fetchUser(storedToken);
-    } else {
-      setIsInitialized(true);
-    }
-  }, []);
+  const router = useRouter();
 
   const fetchUser = async (authToken: string) => {
     try {
-      const response = await fetch('http://localhost:8000/auth/me', {
+      console.log('[AuthProvider] Fetching user data with token length:', authToken?.length);
+      const response = await fetch('/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Accept': 'application/json',
@@ -51,41 +31,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         credentials: 'include',
       });
       
+      console.log('[AuthProvider] /me response status:', response.status);
+      const responseText = await response.text();
+      console.log('[AuthProvider] /me response text:', responseText);
+
       if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
+        try {
+          const userData = JSON.parse(responseText);
+          console.log('[AuthProvider] User data parsed:', userData);
+          setUser(userData);
+        } catch (parseError) {
+          console.error('[AuthProvider] Failed to parse user data:', parseError);
+          await handleLogout();
+        }
       } else {
+        console.error('[AuthProvider] Failed to fetch user:', responseText);
         // If token is invalid, logout
         await handleLogout();
       }
     } catch (error) {
-      console.error('Error fetching user:', error);
+      console.error('[AuthProvider] Network error fetching user:', error);
       await handleLogout();
-    } finally {
-      setIsInitialized(true);
     }
   };
 
   const handleLogout = async () => {
+    if (typeof window === 'undefined') {
+      console.log('[AuthProvider] Server-side, skipping logout');
+      return;
+    }
+    
+    console.log('[AuthProvider] Starting logout process');
     setUser(null);
     setToken(null);
     localStorage.removeItem('token');
     
     try {
-      // Remove token cookie
-      await fetch('/api/auth/remove-token', {
+      console.log('[AuthProvider] Removing token cookie');
+      const response = await fetch('/api/auth/remove-token', {
         method: 'POST',
         credentials: 'include',
       });
+      
+      console.log('[AuthProvider] Remove token response:', response.status);
+      
+      console.log('[AuthProvider] Redirecting to login page');
+      window.location.href = '/copertine/auth/login';
     } catch (error) {
-      console.error('Error removing token:', error);
+      console.error('[AuthProvider] Error during logout:', error);
     }
   };
 
   const login = async (newToken: string) => {
+    if (typeof window === 'undefined') {
+      console.log('[AuthProvider] Server-side, skipping login');
+      return;
+    }
+    
     try {
-      // Set token in HTTP-only cookie
-      await fetch('/api/auth/set-token', {
+      console.log('[AuthProvider] Starting login with token length:', newToken?.length);
+      
+      // First set the token in the auth context and localStorage
+      console.log('[AuthProvider] Updating local state');
+      setToken(newToken);
+      localStorage.setItem('token', newToken);
+
+      // Then set the HTTP-only cookie via API
+      console.log('[AuthProvider] Setting token cookie');
+      const cookieResponse = await fetch('/api/auth/set-token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -93,32 +106,93 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         credentials: 'include',
         body: JSON.stringify({ token: newToken }),
       });
-
-      setToken(newToken);
-      localStorage.setItem('token', newToken);
+      
+      if (!cookieResponse.ok) {
+        throw new Error('Failed to set token cookie');
+      }
+      
+      console.log('[AuthProvider] Set token cookie response:', cookieResponse.status);
+      
+      // Finally fetch user data
+      console.log('[AuthProvider] Fetching user data');
       await fetchUser(newToken);
+
+      // Force a page reload to ensure middleware picks up the new cookie
+      console.log('[AuthProvider] Reloading page to apply new auth state');
+      window.location.href = '/copertine';
     } catch (error) {
-      console.error('Error setting token:', error);
+      console.error('[AuthProvider] Error during login:', error);
       await handleLogout();
     }
   };
 
-  // Don't render children until we've checked authentication
-  if (!isInitialized) {
-    return null;
-  }
+  useEffect(() => {
+    let mounted = true;
+
+    const initialize = async () => {
+      if (typeof window === 'undefined') {
+        console.log('[AuthProvider] Server-side, skipping initialization');
+        if (mounted) setIsInitialized(true);
+        return;
+      }
+
+      try {
+        console.log('[AuthProvider] Starting auth initialization');
+        const storedToken = localStorage.getItem('token');
+        if (storedToken && mounted) {
+          console.log('[AuthProvider] Found stored token');
+          setToken(storedToken);
+          await fetchUser(storedToken);
+        } else {
+          console.log('[AuthProvider] No stored token found');
+        }
+      } catch (error) {
+        console.error('[AuthProvider] Error initializing auth:', error);
+        if (mounted) await handleLogout();
+      } finally {
+        if (mounted) {
+          console.log('[AuthProvider] Setting initialized state');
+          setIsInitialized(true);
+        }
+      }
+    };
+
+    initialize();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return {
+    user,
+    token,
+    isInitialized,
+    login,
+    logout: handleLogout,
+    isAuthenticated: !!user,
+  };
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  console.log('[AuthProvider] Rendering provider');
+  const auth = useAuthState();
+
+  console.log('[AuthProvider] Current auth state:', {
+    isInitialized: auth.isInitialized,
+    hasToken: !!auth.token,
+    isAuthenticated: auth.isAuthenticated
+  });
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        login,
-        logout: handleLogout,
-        isAuthenticated: !!user,
-        token,
-      }}
-    >
-      {children}
+    <AuthContext.Provider value={auth}>
+      {!auth.isInitialized ? (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 }

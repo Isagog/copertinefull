@@ -1,18 +1,20 @@
-// app/layout.tsx
-import type { Metadata } from "next";
-import { Inter as FontSans } from "next/font/google";
-import { ThemeProvider } from "../providers/theme-provider";
-import { AuthProvider } from "./context/auth-context";
-import "./globals.css";
+/**
+ * Path: frontend/app/layout.tsx
+ * Description: Root layout component for the application
+ * Handles theme initialization and global styles
+ */
 
-const fontSans = FontSans({
-  subsets: ["latin"],
-  variable: "--font-sans",
-});
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import Script from 'next/script';
+import { AuthProvider } from '@app/context/auth-context';
+
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Il Manifesto - Copertine",
-  description: "Archivio delle copertine de Il Manifesto",
+  title: 'Il Manifesto - Archivio Copertine',
+  description: 'Archivio storico delle copertine de Il Manifesto',
 };
 
 export default function RootLayout({
@@ -21,16 +23,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="it" className={fontSans.variable}>
+    <html lang="it" suppressHydrationWarning>
       <head>
-        <link rel="preload" href="/copertine/manifesto_logo.svg" as="image" />
+        <Script id="theme-script" strategy="beforeInteractive">
+          {`
+            try {
+              const savedTheme = localStorage.getItem('theme');
+              const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+              if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                document.documentElement.classList.add('dark');
+              } else {
+                document.documentElement.classList.remove('dark');
+              }
+            } catch (e) {}
+          `}
+        </Script>
       </head>
-      <body className="antialiased">
-        <ThemeProvider defaultTheme="light">
-          <AuthProvider>
-            {children}
-          </AuthProvider>
-        </ThemeProvider>
+      <body className={inter.className} suppressHydrationWarning>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

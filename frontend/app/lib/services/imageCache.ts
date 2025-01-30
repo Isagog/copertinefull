@@ -75,7 +75,7 @@ class ImagePathCache {
            if (nextPageData) {
                // Prefetch each image in the next page
                nextPageData.data.forEach(copertina => {
-                   const path = `/images/${copertina.filename}`;
+                   const path = `/copertine/images/${copertina.filename}`;
                    // Create a hidden Image to trigger the browser to load it
                    if (typeof window !== 'undefined') {
                        const img = new Image();
@@ -94,7 +94,7 @@ class ImagePathCache {
    getImagePath(filename: string, currentOffset?: number): string {
        if (this.shouldInvalidateCache()) {
            // Only clear if we actually find a new image
-           const path = `/images/${filename}`;
+           const path = `/copertine/images/${filename}`;
            if (!this.cache.has(filename)) {
                this.cache.clear();
                this.prefetchedPages.clear();
@@ -107,7 +107,7 @@ class ImagePathCache {
        
        let path = this.cache.get(filename);
        if (!path) {
-           path = `/images/${filename}`;
+           path = `/copertine/images/${filename}`;
            this.cache.set(filename, path);
            this.saveToStorage();
        }

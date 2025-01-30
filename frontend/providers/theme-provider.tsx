@@ -1,62 +1,36 @@
-// providers/theme-provider.tsx
+/**
+ * Path: frontend/providers/theme-provider.tsx
+ * Description: Theme provider component for handling dark/light mode
+ * Uses next-themes with hydration protection and client-side theme switching
+ */
+
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import * as React from 'react';
+import { ThemeProvider as NextThemesProvider } from 'next-themes';
+import type { ThemeProviderProps } from 'next-themes/dist/types';
 
-type Theme = 'dark' | 'light';
+export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
+  const [mounted, setMounted] = React.useState(false);
 
-type ThemeProviderProps = {
-  children: React.ReactNode;
-  defaultTheme?: Theme;
-};
-
-type ThemeProviderState = {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
-};
-
-const initialState: ThemeProviderState = {
-  theme: 'light',
-  setTheme: () => null,
-};
-
-const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
-
-export function ThemeProvider({
-  children,
-  defaultTheme = 'light',
-}: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(defaultTheme);
-
-  useEffect(() => {
-    // Add dark class to html element
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
-
-    // Store the preference
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  // Initialize theme from localStorage if available
-  useEffect(() => {
-    const storedTheme = localStorage.getItem('theme') as Theme | null;
-    if (storedTheme) {
-      setTheme(storedTheme);
-    }
+  // Prevent hydration mismatch
+  React.useEffect(() => {
+    setMounted(true);
   }, []);
 
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-white dark:bg-gray-900">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <ThemeProviderContext.Provider value={{ theme, setTheme }}>
+    <NextThemesProvider {...props}>
       {children}
-    </ThemeProviderContext.Provider>
+    </NextThemesProvider>
   );
 }
-
-export const useTheme = () => {
-  const context = useContext(ThemeProviderContext);
-  if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-  }
-  return context;
-};

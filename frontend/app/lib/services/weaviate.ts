@@ -1,12 +1,9 @@
-// app/lib/services/weaviate.ts
 import weaviate, { WeaviateClient } from 'weaviate-ts-client';
 import { API } from '../config/constants';
 
 export function getWeaviateClient(): WeaviateClient {
-    const config = {
+    return weaviate.client({
         scheme: API.WEAVIATE_SCHEME,
         host: API.WEAVIATE_HOST,
-    };
-
-    return weaviate.client(config);
+    });
 }

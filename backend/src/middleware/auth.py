@@ -15,11 +15,12 @@ async def auth_middleware(request: Request, call_next: Callable):
         "/auth/reset-password-confirm",
         "/docs",
         "/redoc",
-        "/openapi.json"
+        "/openapi.json",
+        "/health"
     ]
     
     # Allow OPTIONS requests and public paths without authentication
-    if request.method == "OPTIONS" or request.url.path in public_paths:
+    if request.method == "OPTIONS" or any(request.url.path.endswith(path) for path in public_paths):
         return await call_next(request)
     
     try:
@@ -46,7 +47,8 @@ async def auth_middleware(request: Request, call_next: Callable):
             )
         
         # Continue with the request
-        return await call_next(request)
+        response = await call_next(request)
+        return response
         
     except HTTPException as exc:
         return JSONResponse(
@@ -55,6 +57,7 @@ async def auth_middleware(request: Request, call_next: Callable):
             headers=exc.headers,
         )
     except Exception as exc:
+        print(f"Error in auth middleware: {exc}")  # Add logging
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "Internal server error"},

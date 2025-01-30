@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { API } from '@/app/lib/config/constants';
 
 export default function RequestPasswordReset() {
   const [email, setEmail] = useState('');
@@ -16,7 +17,7 @@ export default function RequestPasswordReset() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/auth/reset-password-request', {
+      const response = await fetch('/api/auth/reset-password-request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

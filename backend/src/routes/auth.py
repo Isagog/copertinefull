@@ -81,28 +81,57 @@ async def verify_email(
     token_data: schemas.EmailVerificationConfirm,
     db: Session = Depends(get_db)
 ) -> Any:
-    verification = db.query(models.EmailVerification).filter(
-        models.EmailVerification.token == token_data.token,
-        models.EmailVerification.used == False,
-        models.EmailVerification.expires_at > datetime.utcnow()
-    ).first()
-    
-    if not verification:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired verification token"
+    try:
+        # Log the received token
+        print(f"Received verification token: {token_data.token}")
+        
+        # Find verification record
+        verification = db.query(models.EmailVerification).filter(
+            models.EmailVerification.token == token_data.token,
+            models.EmailVerification.used == False,
+            models.EmailVerification.expires_at > datetime.utcnow()
+        ).first()
+        
+        if not verification:
+            # Log the query results
+            all_tokens = db.query(models.EmailVerification).all()
+            print("All verification tokens:", [(v.token, v.used, v.expires_at) for v in all_tokens])
+            
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired verification token"
+            )
+        
+        # Mark user as active
+        user = db.query(models.User).filter(models.User.id == verification.user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User not found"
+            )
+            
+        user.is_active = True
+        
+        # Mark verification token as used
+        verification.used = True
+        
+        db.commit()
+        
+        return JSONResponse(
+            content={"message": "Email verified successfully"},
+            headers={
+                "Access-Control-Allow-Origin": "http://localhost:3000",
+                "Access-Control-Allow-Credentials": "true",
+            }
         )
-    
-    # Mark user as active
-    user = db.query(models.User).filter(models.User.id == verification.user_id).first()
-    user.is_active = True
-    
-    # Mark verification token as used
-    verification.used = True
-    
-    db.commit()
-    
-    return {"message": "Email verified successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Verification error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error during verification: {str(e)}"
+        )
 
 @router.options("/login")
 async def login_options():

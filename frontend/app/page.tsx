@@ -1,5 +1,9 @@
-import { redirect } from 'next/navigation';
+/**
+ * Path: frontend/app/page.tsx
+ * Description: Root page component
+ * Empty component that lets middleware handle redirects
+ */
 
 export default function Home() {
-  redirect('/auth/login');
+  return null;
 }

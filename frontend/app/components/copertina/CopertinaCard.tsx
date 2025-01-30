@@ -2,8 +2,7 @@
 import { useState, useEffect } from "react";
 import { CopertineEntry } from "@app/types/copertine";
 import Image from "next/image";
-import { imagePathCache } from '@/app/lib/services/imageCache';
-import Head from 'next/head';
+import { imagePathCache } from '@app/lib/services/imageCache';
 
 interface CopertinaCardProps {
   copertina: CopertineEntry;
@@ -79,11 +78,7 @@ export default function CopertinaCard({ copertina, currentOffset, searchTerm }: 
   }, [isPopupVisible]);
 
   return (
-    <>
-      <Head>
-        <link rel="preload" href={imagePath} as="image" />
-      </Head>
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-6 border border-gray-100 dark:border-gray-700 max-w-4xl w-full">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-6 border border-gray-100 dark:border-gray-700 max-w-4xl w-full">
         <div className="space-y-6">
           {/* Title and Date row */}
           <div className="flex flex-wrap items-center gap-2 text-lg">
@@ -109,6 +104,9 @@ export default function CopertinaCard({ copertina, currentOffset, searchTerm }: 
                   alt={copertina.extracted_caption}
                   fill
                   className="object-cover"
+                  loading="lazy"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  priority={false}
                 />
               </div>
             </div>
@@ -159,11 +157,12 @@ export default function CopertinaCard({ copertina, currentOffset, searchTerm }: 
                 height={900}
                 className="rounded cursor-pointer"
                 onClick={closePopup}
+                loading="eager"
+                priority={true}
               />
             </div>
           </div>
         )}
       </div>
-    </>
   );
 }

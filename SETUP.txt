@@ -1,20 +1,17 @@
 Local dev setup procedure
 
-Initial setup:
+0) Initial setup:
 cd backend
 poetry install
-poetry run copertine generate-secret  # Copy the output to .env
-poetry run copertine init-db  # Initialize the database
+poetry run copertine-cli generate-secret  # Copy the output to .env
+poetry run copertine-cli init-db  # Initialize the database
+poetry run copertine-cli reset-db #  this is case the DB is there already but you want to clean it up
 
 1) Start a mock SMTP server as 
-python -m smtpd -c DebuggingServer -n localhost:1025
+docker-compose up mailpit -d (web interface will be on 8025)
 
 2) Start the backend
 cd backend && poetry run uvicorn src.main:app --reload
 
 3) Start the frontend and go to the initial /copertine slug
 cd frontend && pnpm dev
-
-
-
-PS Find a MailHog image for arm64

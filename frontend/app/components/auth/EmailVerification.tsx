@@ -1,114 +1,83 @@
+/**
+ * Path: frontend/app/components/auth/EmailVerification.tsx
+ * Description: Email verification component
+ * Client component that handles email verification token validation
+ */
+
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { API } from '@/app/lib/config/constants';
 
-export default function EmailVerification() {
+interface EmailVerificationProps {
+  token?: string;
+}
+
+export default function EmailVerification({ token }: EmailVerificationProps) {
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [message, setMessage] = useState('Verifying your email...');
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [error, setError] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isVerified, setIsVerified] = useState(false);
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    if (token) {
-      verifyEmail(token);
+    if (!token) {
+      setStatus('error');
+      setMessage('Invalid verification link. Please check your email and try again.');
+      return;
     }
-  }, [searchParams]);
 
-  const verifyEmail = async (token: string) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:8000/auth/verify-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ token }),
-      });
+    const verifyEmail = async () => {
+      try {
+        const response = await fetch('/api/auth/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token }),
+        });
 
-      const data = await response.json();
+        if (!response.ok) {
+          throw new Error('Verification failed');
+        }
 
-      if (!response.ok) {
-        throw new Error(data.detail || 'Verification failed');
+        setStatus('success');
+        setMessage('Email verified successfully! Redirecting to login...');
+        
+        // Redirect to login after successful verification
+        setTimeout(() => {
+          router.push('/copertine/auth/login');
+        }, 2000);
+      } catch (error) {
+        setStatus('error');
+        setMessage('Failed to verify email. Please try again or contact support.');
       }
+    };
 
-      setIsVerified(true);
-      
-      // Redirect to login page after a delay
-      setTimeout(() => {
-        router.push('/auth/login');
-      }, 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold mb-4">Verifying your email...</h2>
-          <p className="text-gray-600">Please wait while we verify your email address.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold mb-4 text-red-600">Verification Failed</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <Link
-            href="/auth/login"
-            className="text-blue-600 hover:text-blue-500"
-          >
-            Return to login
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (isVerified) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold mb-4 text-green-600">Email Verified!</h2>
-          <p className="text-gray-600 mb-4">
-            Your email has been successfully verified. You will be redirected to the login page.
-          </p>
-          <Link
-            href="/auth/login"
-            className="text-blue-600 hover:text-blue-500"
-          >
-            Go to login
-          </Link>
-        </div>
-      </div>
-    );
-  }
+    verifyEmail();
+  }, [token, router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h2 className="text-2xl font-semibold mb-4">Email Verification Required</h2>
-        <p className="text-gray-600 mb-4">
-          Please check your email for the verification link.
-        </p>
-        <Link
-          href="/auth/login"
-          className="text-blue-600 hover:text-blue-500"
-        >
-          Return to login
-        </Link>
+    <div className="text-center">
+      <h1 className="text-2xl font-bold mb-4">Email Verification</h1>
+      <div
+        className={`p-4 rounded-md ${
+          status === 'loading'
+            ? 'bg-blue-50 text-blue-700'
+            : status === 'success'
+            ? 'bg-green-50 text-green-700'
+            : 'bg-red-50 text-red-700'
+        }`}
+      >
+        <p>{message}</p>
       </div>
+      {status === 'error' && (
+        <button
+          onClick={() => router.push('/copertine/auth/login')}
+          className="mt-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Return to Login
+        </button>
+      )}
     </div>
   );
 }

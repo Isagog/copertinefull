@@ -105,7 +105,7 @@ def create_password_reset_token(user_id: str) -> models.PasswordReset:
 
 async def send_verification_email(email: str, token: str):
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    verification_url = f"{frontend_url}/auth/verify?token={token}"
+    verification_url = f"{frontend_url}/copertine/auth/verify?token={token}"
     
     # Load email template
     template_path = Path(__file__).parent / "email_templates" / "verification.html"
@@ -127,7 +127,7 @@ async def send_verification_email(email: str, token: str):
 
 async def send_password_reset_email(email: str, token: str):
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    reset_url = f"{frontend_url}/auth/reset-password/confirm?token={token}"
+    reset_url = f"{frontend_url}/copertine/auth/reset-password/confirm?token={token}"
     
     # Load email template
     template_path = Path(__file__).parent / "email_templates" / "password_reset.html"

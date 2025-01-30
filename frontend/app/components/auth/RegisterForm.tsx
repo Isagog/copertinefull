@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { API } from '@/app/lib/config/constants';
 
 interface RegisterFormData {
   email: string;
@@ -66,7 +67,7 @@ export default function RegisterForm() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/auth/register', {
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

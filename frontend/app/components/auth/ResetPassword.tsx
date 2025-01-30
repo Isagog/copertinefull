@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { API } from '@/app/lib/config/constants';
 
 interface ResetPasswordData {
   token: string;
@@ -59,7 +60,7 @@ export default function ResetPassword() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/auth/reset-password-confirm', {
+      const response = await fetch('/api/auth/reset-password-confirm', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
