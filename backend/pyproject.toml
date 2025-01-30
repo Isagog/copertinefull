@@ -3,7 +3,6 @@ name = "copertine3"
 version = "0.1.0"
 description = ""
 authors = ["Robert Alexander <gogonegro@gmail.com>"]
-readme = "README.md"
 package-mode = false
 
 [tool.poetry.dependencies]
@@ -19,7 +18,7 @@ fastapi = "^0.115.6"
 uvicorn = "^0.34.0"
 sqlalchemy = "^2.0.25"
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
-bcrypt = "4.0.1"  # Pin to a specific version that works with passlib
+bcrypt = "4.0.1"
 python-jose = {extras = ["cryptography"], version = "^3.3.0"}
 fastapi-mail = "^1.4.1"
 python-multipart = "^0.0.9"
@@ -28,7 +27,13 @@ click = "^8.1.7"
 pyjwt = "^2.10.1"
 
 [tool.poetry.scripts]
-copertine = "src.cli:cli"
+copertine-cli = "src.cli:cli"
+
+[tool.poetry.group.test.dependencies]
+playwright = "^1.41.1"
+aiohttp = "^3.9.1"
+pytest = "^7.4.4"
+pytest-asyncio = "^0.23.3"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.6"

@@ -70,7 +70,9 @@ export default function RegisterForm() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           email: formData.email,
           password: formData.password,
@@ -94,10 +96,8 @@ export default function RegisterForm() {
         confirmPassword: '',
       });
 
-      // Redirect to verification page after a delay
-      setTimeout(() => {
-        router.push('/auth/verify');
-      }, 3000);
+      // Redirect to verification page immediately
+      router.push('/auth/verify');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {

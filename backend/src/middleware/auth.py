@@ -18,8 +18,8 @@ async def auth_middleware(request: Request, call_next: Callable):
         "/openapi.json"
     ]
     
-    # Check if the path requires authentication
-    if request.url.path in public_paths:
+    # Allow OPTIONS requests and public paths without authentication
+    if request.method == "OPTIONS" or request.url.path in public_paths:
         return await call_next(request)
     
     try:

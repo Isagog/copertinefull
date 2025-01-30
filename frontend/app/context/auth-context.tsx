@@ -28,18 +28,27 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    // Check if user is already authenticated
-    fetchUser();
+    // Check for token in localStorage on mount
+    const storedToken = localStorage.getItem('token');
+    if (storedToken) {
+      setToken(storedToken);
+      fetchUser(storedToken);
+    } else {
+      setIsInitialized(true);
+    }
   }, []);
 
-  const fetchUser = async () => {
+  const fetchUser = async (authToken: string) => {
     try {
       const response = await fetch('http://localhost:8000/auth/me', {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${authToken}`,
+          'Accept': 'application/json',
         },
+        credentials: 'include',
       });
       
       if (response.ok) {
@@ -47,45 +56,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(userData);
       } else {
         // If token is invalid, logout
-        logout();
+        await handleLogout();
       }
     } catch (error) {
       console.error('Error fetching user:', error);
-      logout();
+      await handleLogout();
+    } finally {
+      setIsInitialized(true);
+    }
+  };
+
+  const handleLogout = async () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('token');
+    
+    try {
+      // Remove token cookie
+      await fetch('/api/auth/remove-token', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('Error removing token:', error);
     }
   };
 
   const login = async (newToken: string) => {
-    setToken(newToken);
-    
-    // Set token in HTTP-only cookie
-    await fetch('/api/auth/set-token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ token: newToken }),
-    });
-    
-    fetchUser();
+    try {
+      // Set token in HTTP-only cookie
+      await fetch('/api/auth/set-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ token: newToken }),
+      });
+
+      setToken(newToken);
+      localStorage.setItem('token', newToken);
+      await fetchUser(newToken);
+    } catch (error) {
+      console.error('Error setting token:', error);
+      await handleLogout();
+    }
   };
 
-  const logout = async () => {
-    setUser(null);
-    setToken(null);
-    
-    // Remove token cookie
-    await fetch('/api/auth/remove-token', {
-      method: 'POST',
-    });
-  };
+  // Don't render children until we've checked authentication
+  if (!isInitialized) {
+    return null;
+  }
 
   return (
     <AuthContext.Provider
       value={{
         user,
         login,
-        logout,
+        logout: handleLogout,
         isAuthenticated: !!user,
         token,
       }}

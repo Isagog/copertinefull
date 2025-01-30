@@ -6,8 +6,15 @@
 # Install backend dependencies and set up database
 cd backend
 poetry install
-poetry run copertine generate-secret  # Copy the output to .env
-poetry run copertine init-db  # Initialize the database
+poetry install --no-root  # Install the package in development mode
+
+# Generate a secret key and add it to .env
+poetry run copertine-cli generate-secret  # Copy the output to .env
+
+# Initialize or reset the database
+poetry run copertine-cli init-db     # First-time initialization
+# OR if tables already exist:
+poetry run copertine-cli reset-db    # Reset existing database (⚠️ Deletes all data)
 ```
 
 Create or update your `.env` file in the backend directory with:
@@ -35,11 +42,17 @@ FRONTEND_URL=http://localhost:3000
 
 1. Start the email testing server (choose one option):
 
-   Option A - Using MailHog (recommended):
+   Option A - Using Mailpit (recommended):
    ```bash
-   docker-compose up mailhog -d
+   docker-compose up mailpit -d
    ```
-   Access MailHog web interface at http://localhost:8025 to view sent emails
+   Access Mailpit web interface at http://localhost:8025 to view sent emails
+   
+   Features:
+   - Modern, actively maintained SMTP testing server
+   - Real-time email testing
+   - Clean web interface
+   - No storage limitations
 
    Option B - Using Python's built-in SMTP server:
    ```bash

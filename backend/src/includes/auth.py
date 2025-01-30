@@ -107,17 +107,19 @@ async def send_verification_email(email: str, token: str):
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     verification_url = f"{frontend_url}/auth/verify?token={token}"
     
+    # Load email template
+    template_path = Path(__file__).parent / "email_templates" / "verification.html"
+    with open(template_path) as f:
+        template = f.read()
+        
+    # Replace template variables
+    html_content = template.replace("{{ verification_url }}", verification_url)
+    html_content = html_content.replace("{{ expire_hours }}", str(VERIFICATION_TOKEN_EXPIRE_HOURS))
+    
     message = MessageSchema(
         subject="Verify your email",
         recipients=[email],
-        body=f"""
-        Please click the following link to verify your email address:
-        {verification_url}
-        
-        This link will expire in {VERIFICATION_TOKEN_EXPIRE_HOURS} hours.
-        
-        If you did not request this verification, please ignore this email.
-        """,
+        body=html_content,
         subtype="html"
     )
     
@@ -125,19 +127,21 @@ async def send_verification_email(email: str, token: str):
 
 async def send_password_reset_email(email: str, token: str):
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    reset_url = f"{frontend_url}/auth/reset-password?token={token}"
+    reset_url = f"{frontend_url}/auth/reset-password/confirm?token={token}"
+    
+    # Load email template
+    template_path = Path(__file__).parent / "email_templates" / "password_reset.html"
+    with open(template_path) as f:
+        template = f.read()
+        
+    # Replace template variables
+    html_content = template.replace("{{ reset_url }}", reset_url)
+    html_content = html_content.replace("{{ expire_hours }}", str(PASSWORD_RESET_TOKEN_EXPIRE_HOURS))
     
     message = MessageSchema(
         subject="Reset your password",
         recipients=[email],
-        body=f"""
-        You have requested to reset your password. Please click the following link to set a new password:
-        {reset_url}
-        
-        This link will expire in {PASSWORD_RESET_TOKEN_EXPIRE_HOURS} hour.
-        
-        If you did not request this password reset, please ignore this email.
-        """,
+        body=html_content,
         subtype="html"
     )
     

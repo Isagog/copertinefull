@@ -7,34 +7,74 @@ from ..includes.database import get_db
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
+
+@router.options("/register")
+async def register_options():
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "POST",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
+
 @router.post("/register", response_model=schemas.User)
 async def register(user: schemas.UserCreate, db: Session = Depends(get_db)) -> Any:
-    # Check if user already exists
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
+    try:
+        # Check if user already exists
+        db_user = db.query(models.User).filter(models.User.email == user.email).first()
+        if db_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        
+        # Create new user
+        db_user = models.User(
+            email=user.email,
+            hashed_password=auth.get_password_hash(user.password)
+        )
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        
+        # Create and store verification token
+        verification = auth.create_verification_token(db_user.id)
+        db.add(verification)
+        db.commit()
+        
+        # Send verification email
+        await auth.send_verification_email(user.email, verification.token)
+        
+        return JSONResponse(
+            content=jsonable_encoder(db_user),
+            headers={
+                "Access-Control-Allow-Origin": "http://localhost:3000",
+                "Access-Control-Allow-Credentials": "true",
+            }
+        )
+    except Exception as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+            detail=str(e)
         )
-    
-    # Create new user
-    db_user = models.User(
-        email=user.email,
-        hashed_password=auth.get_password_hash(user.password)
+
+@router.options("/verify-email")
+async def verify_email_options():
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "POST",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Credentials": "true",
+        }
     )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    # Create and store verification token
-    verification = auth.create_verification_token(db_user.id)
-    db.add(verification)
-    db.commit()
-    
-    # Send verification email
-    await auth.send_verification_email(user.email, verification.token)
-    
-    return db_user
 
 @router.post("/verify-email")
 async def verify_email(
@@ -63,6 +103,18 @@ async def verify_email(
     db.commit()
     
     return {"message": "Email verified successfully"}
+
+@router.options("/login")
+async def login_options():
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "POST",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
 
 @router.post("/login", response_model=schemas.Token)
 async def login(
@@ -98,6 +150,18 @@ async def login(
         "token_type": "bearer"
     }
 
+@router.options("/reset-password-request")
+async def reset_password_request_options():
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "POST",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
+
 @router.post("/reset-password-request")
 async def request_password_reset(
     reset_request: schemas.PasswordResetRequest,
@@ -117,6 +181,18 @@ async def request_password_reset(
     await auth.send_password_reset_email(user.email, reset.token)
     
     return {"message": "If the email exists, a password reset link has been sent"}
+
+@router.options("/reset-password-confirm")
+async def reset_password_confirm_options():
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "POST",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
 
 @router.post("/reset-password-confirm")
 async def confirm_password_reset(
@@ -145,6 +221,18 @@ async def confirm_password_reset(
     db.commit()
     
     return {"message": "Password reset successfully"}
+
+@router.options("/me")
+async def me_options():
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
 
 @router.get("/me", response_model=schemas.User)
 async def read_users_me(

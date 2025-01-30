@@ -35,9 +35,9 @@ services:
       - weaviate_net
     restart: unless-stopped
 
-  mailhog:
-    image: mailhog/mailhog:latest
-    container_name: mailhog
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
     ports:
       - "1025:1025"  # SMTP server port
       - "8025:8025"  # Web interface port
