@@ -1,6 +1,18 @@
-import { clerkMiddleware } from '@clerk/nextjs/server'
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 
-export default clerkMiddleware()
+const isProtectedRoute = createRouteMatcher(['/copertine(.*)'])
+
+export default clerkMiddleware((auth, req) => {
+  if (isProtectedRoute(req)) {
+    // If the user is not signed in and is trying to access a protected route,
+    // redirect them to the sign-in page
+    if (!auth.userId) {
+      const signInUrl = new URL('/sign-in', req.url)
+      signInUrl.searchParams.set('redirect_url', req.url)
+      return Response.redirect(signInUrl)
+    }
+  }
+})
 
 export const config = {
   matcher: [
