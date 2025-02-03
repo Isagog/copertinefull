@@ -1,11 +1,13 @@
-import { Suspense } from "react";
-import Header from "../components/header/Header";
-import SearchSection from "../components/searchsection/SearchSection";
+"use client"
+
+import { Suspense } from "react"
+import Header from "../components/header/Header"
+import SearchSection from "../components/searchsection/SearchSection"
 
 export default function CopertineLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
     <>
@@ -25,5 +27,5 @@ export default function CopertineLayout({
         </Suspense>
       </main>
     </>
-  );
+  )
 }
