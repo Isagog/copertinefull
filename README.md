@@ -24,7 +24,7 @@ This project provides a searchable archive of Il Manifesto's opening stories, wi
 The system consists of three main components:
 
 1. **Batch Scraper**
-   - Runs daily at 5:00 AM (Tuesday through Sunday)
+   - Runs daily at 7:30 AM (Tuesday through Sunday)
    - Heuristically extracts opening article content:
      - Article title
      - Article kicker
