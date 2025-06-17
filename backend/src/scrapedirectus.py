@@ -7,6 +7,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import httpx
 import weaviate
@@ -171,17 +172,31 @@ class DirectusManifestoScraper:
             return ""
 
     def store_in_weaviate(self, article: dict[str, Any], image_filename: str):
-        """Store scraped data in Weaviate, checking for existence first."""
+        """Store scraped data in Weaviate, overwriting if it already exists."""
         try:
-            date_published = datetime.fromisoformat(article['datePublished'])
+            date_published = datetime.fromisoformat(article["datePublished"])
             edition_id = date_published.strftime("%d-%m-%Y")
             iso_date = date_published.isoformat()
-            uuid = generate_uuid5(edition_id)
 
-            # Check if object already exists
-            if self.collection.query.fetch_object_by_id(uuid):
-                logger.info("Object with UUID %s already exists. Skipping insertion.", uuid)
-                return
+            # Generate a deterministic UUID based on the editionId
+            # The namespace UUID is arbitrary, but must be constant.
+            # Using the UUID of the string "ilmanifesto.it" as a namespace.
+            namespace_uuid = UUID("c1e7c19c-2c4c-5c9c-9c9c-c1e7c19c2c4c")
+            uuid = generate_uuid5(edition_id, namespace_uuid)
+
+            # Check if an object with the same editionId already exists and delete it
+            # This ensures that we are overwriting the existing object
+            response = self.collection.query.fetch_objects(
+                filters=Filter.by_property("editionId").equal(edition_id)
+            )
+            if response.objects:
+                for obj in response.objects:
+                    self.collection.data.delete_by_id(obj.uuid)
+                    logger.info(
+                        "Deleted existing object with editionId %s and UUID %s",
+                        edition_id,
+                        obj.uuid,
+                    )
 
             data = {
                 "testataName": "Il Manifesto",
@@ -192,9 +207,15 @@ class DirectusManifestoScraper:
                 "kickerStr": article.get("articleKicker"),
             }
             self.collection.data.insert(properties=data, uuid=uuid)
-            logger.info("Successfully stored data in Weaviate for date %s", edition_id)
+            logger.info(
+                "Successfully stored data in Weaviate for date %s with UUID %s",
+                edition_id,
+                uuid,
+            )
         except Exception:
-            logger.exception("Failed to store data in Weaviate for article %s", article.get('id'))
+            logger.exception(
+                "Failed to store data in Weaviate for article %s", article.get("id")
+            )
 
     def fetch_directus_articles(self, params: dict):
         client = httpx.Client(timeout=30.0, follow_redirects=True)
