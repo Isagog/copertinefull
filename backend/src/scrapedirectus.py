@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from weaviate.classes.query import Filter
 from weaviate.util import generate_uuid5
 
-from includes.weschema import COPERTINE_COLL_CONFIG
+from .includes.weschema import COPERTINE_COLL_CONFIG
 
 
 class MissingEnvironmentVariableError(ValueError):
@@ -24,7 +24,10 @@ class MissingEnvironmentVariableError(ValueError):
 
     def __init__(self, var_name: str):
         self.var_name = var_name
-        super().__init__(f"Environment variable '{var_name}' must be set.")
+        super().__init__()
+
+    def __str__(self):
+        return f"Environment variable '{self.var_name}' must be set."
 
 
 class InvalidDateFormatError(ValueError):
@@ -32,7 +35,10 @@ class InvalidDateFormatError(ValueError):
 
     def __init__(self, date_str: str):
         self.date_str = date_str
-        super().__init__(f"Invalid date format for '{date_str}'")
+        super().__init__()
+
+    def __str__(self):
+        return f"Invalid date format for '{self.date_str}'"
 
 
 def _get_required_env(var_name: str) -> str:
