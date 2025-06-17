@@ -14,10 +14,34 @@ import httpx
 import weaviate
 from dotenv import load_dotenv
 from weaviate.classes.query import Filter
-from weaviate.collections.classes.filters import Filter as FilterV4
 from weaviate.util import generate_uuid5
 
 from includes.weschema import COPERTINE_COLL_CONFIG
+
+
+class MissingEnvironmentVariableError(ValueError):
+    """Custom exception for missing environment variables."""
+
+    def __init__(self, var_name: str):
+        self.var_name = var_name
+        super().__init__(f"Environment variable '{var_name}' must be set.")
+
+
+class InvalidDateFormatError(ValueError):
+    """Custom exception for invalid date formats."""
+
+    def __init__(self, date_str: str):
+        self.date_str = date_str
+        super().__init__(f"Invalid date format for '{date_str}'")
+
+
+def _get_required_env(var_name: str) -> str:
+    """Get a required environment variable or raise an error."""
+    value = os.getenv(var_name)
+    if value is None:
+        raise MissingEnvironmentVariableError(var_name)
+    return value
+
 
 # Configure logging
 logging.basicConfig(
@@ -61,11 +85,8 @@ class DirectusManifestoScraper:
     def _init_weaviate_client(self) -> weaviate.WeaviateClient:
         """Initialize Weaviate client with error handling"""
         try:
-            weaviate_url = os.getenv("COP_WEAVIATE_URL")
+            weaviate_url = _get_required_env("COP_WEAVIATE_URL")
             weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY")
-
-            if not weaviate_url:
-                raise ValueError("COP_WEAVIATE_URL environment variable not set.")
 
             if "localhost" in weaviate_url or "127.0.0.1" in weaviate_url:
                 parsed_url = urlparse(weaviate_url)
@@ -148,11 +169,12 @@ class DirectusManifestoScraper:
                     abs_path = new_filename_with_ext.resolve()
                     abs_path.parent.mkdir(parents=True, exist_ok=True)
                     abs_path.write_bytes(response.content)
-                    logger.info("Image saved successfully to %s. Size: %d bytes", abs_path, len(response.content))
-                    return new_filename_with_ext.name
                 except Exception:
                     logger.exception("Error saving image to %s", abs_path)
                     return None
+                else:
+                    logger.info("Image saved successfully to %s. Size: %d bytes", abs_path, len(response.content))
+                    return new_filename_with_ext.name
             logger.warning("Failed to download image. Status code: %d", response.status_code)
             return None
 
@@ -175,11 +197,12 @@ class DirectusManifestoScraper:
 
             slug = self.slugify(headline)
             date_parts = date_str.split("-")
-            formatted_date = f"{date_parts[0]}-{date_parts[1]}-{date_parts[2]}" # YYYY-MM-DD
-            return f"il-manifesto_{formatted_date}_{slug}"
+            formatted_date = f"{date_parts[0]}-{date_parts[1]}-{date_parts[2]}"  # YYYY-MM-DD
         except Exception:
             logger.exception("Error transforming image URL to filename")
             return ""
+        else:
+            return f"il-manifesto_{formatted_date}_{slug}"
 
     def store_in_weaviate(self, article: dict[str, Any], image_filename: str):
         """Store scraped data in Weaviate, overwriting if it already exists."""
@@ -318,8 +341,8 @@ def calculate_date_range(date_str=None, number=None):
         try:
             target_date = datetime.strptime(f"{date_str} +0000", "%Y-%m-%d %z")
             start_date = end_date = target_date
-        except ValueError:
-            raise ValueError(f"Invalid date format: '{date_str}'. Expected YYYY-MM-DD.")
+        except ValueError as e:
+            raise InvalidDateFormatError(date_str) from e
     return start_date, end_date
 
 def build_directus_params(start_date, end_date):
@@ -357,8 +380,8 @@ def main():
                             logger.info(f"Fetching articles for date: {date_str}")
                             params = build_directus_params(start_date, end_date)
                             scraper.fetch_directus_articles(params)
-                        except ValueError as e:
-                            logger.error(e)
+                        except ValueError:
+                            logger.exception()
                             continue
             else:
                 start_date, end_date = calculate_date_range(date_str=args.date, number=args.number)
@@ -367,8 +390,8 @@ def main():
                 scraper.fetch_directus_articles(params)
 
         logger.info("Successfully completed article fetching.")
-    except ValueError as e:
-        logger.error(e)
+    except ValueError:
+        logger.exception()
         sys.exit(1)
     except Exception:
         logger.exception("Application failed")
