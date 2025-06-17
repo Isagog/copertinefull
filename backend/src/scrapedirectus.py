@@ -12,11 +12,10 @@ from uuid import UUID
 
 import httpx
 import weaviate
-from weaviate.util import generate_uuid5
-
 from dotenv import load_dotenv
 from weaviate.classes.query import Filter
 from weaviate.collections.classes.filters import Filter as FilterV4
+from weaviate.util import generate_uuid5
 
 from includes.weschema import COPERTINE_COLL_CONFIG
 
