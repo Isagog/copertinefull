@@ -12,7 +12,7 @@ services:
     image: copback:0.1.0
     container_name: copback
     environment:
-      - COP_WEAVIATE_URL=weaviate2025
+      - COP_WEAVIATE_URL=http://localhost:8090
       - COP_WEAVIATE_API_KEY=your_weaviate_api_key
       - COP_COPERTINE_COLLNAME=Copertine
       - COP_VISION_MODELNAME=gpt-4o-mini

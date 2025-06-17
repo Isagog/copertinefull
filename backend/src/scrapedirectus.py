@@ -7,6 +7,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
@@ -42,7 +43,7 @@ class DirectusManifestoScraper:
         self.collection = None
         # Load environment variables
         secrets_path = Path(__file__).parent.parent / '.secrets'
-        load_dotenv(dotenv_path=secrets_path)
+        load_dotenv(dotenv_path=secrets_path, override=True)
         # Initialize Weaviate client
         self.client = self._init_weaviate_client()
         self.collection = self._ensure_collection()
@@ -61,13 +62,23 @@ class DirectusManifestoScraper:
     def _init_weaviate_client(self) -> weaviate.WeaviateClient:
         """Initialize Weaviate client with error handling"""
         try:
-            weaviate_url = os.getenv("COP_WEAVIATE_URL", "")
-            if weaviate_url in ["localhost", "127.0.0.1"]:
-                return weaviate.connect_to_local()
+            weaviate_url = os.getenv("COP_WEAVIATE_URL")
+            weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY")
 
+            if not weaviate_url:
+                raise ValueError("COP_WEAVIATE_URL environment variable not set.")
+
+            if "localhost" in weaviate_url or "127.0.0.1" in weaviate_url:
+                parsed_url = urlparse(weaviate_url)
+                return weaviate.connect_to_local(
+                    host=parsed_url.hostname,
+                    port=parsed_url.port,
+                )
+            
+            # Default to WCS connection for other URLs
             return weaviate.connect_to_wcs(
-                cluster_url=os.getenv("COP_WEAVIATE_URL"),
-                auth_credentials=weaviate.auth.AuthApiKey(os.getenv("COP_WEAVIATE_API_KEY")),
+                cluster_url=weaviate_url,
+                auth_credentials=weaviate.auth.AuthApiKey(weaviate_api_key),
             )
         except Exception:
             logger.exception("Failed to initialize Weaviate client")
