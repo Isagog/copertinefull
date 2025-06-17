@@ -9,7 +9,7 @@ services:
       - PORT=3000
       - HOSTNAME=0.0.0.0
       - ENV WEAVIATE_SCHEME=http
-      - ENV WEAVIATE_HOST=weaviate:8080
+      - ENV WEAVIATE_HOST=weaviate2025:8080
       - ENV WEAVIATE_COLLECTION=Copertine
     ports:
       - "3737:3000"
