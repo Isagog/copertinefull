@@ -292,19 +292,24 @@ def parse_arguments():
         type=str,
         help='Specific date to fetch in YYYY-MM-DD format'
     )
+    group.add_argument(
+        '--datefile',
+        type=str,
+        help='File containing a list of dates to fetch, one per line in YYYY-MM-DD format'
+    )
     return parser.parse_args()
 
-def calculate_date_range(args):
+def calculate_date_range(date_str=None, number=None):
     today = datetime.now(tz=timezone.utc)
-    if args.number:
+    if number:
         end_date = today
-        start_date = today - timedelta(days=args.number -1)
-    elif args.date:
+        start_date = today - timedelta(days=number - 1)
+    elif date_str:
         try:
-            target_date = datetime.strptime(f"{args.date} +0000", "%Y-%m-%d %z")
+            target_date = datetime.strptime(f"{date_str} +0000", "%Y-%m-%d %z")
             start_date = end_date = target_date
         except ValueError:
-            raise ValueError(f"Invalid date format for --date: '{args.date}'. Expected YYYY-MM-DD.")
+            raise ValueError(f"Invalid date format: '{date_str}'. Expected YYYY-MM-DD.")
     return start_date, end_date
 
 def build_directus_params(start_date, end_date):
@@ -325,12 +330,32 @@ def build_directus_params(start_date, end_date):
 def main():
     args = parse_arguments()
     try:
-        start_date, end_date = calculate_date_range(args)
-        logger.info(f"Fetching articles from {start_date.date()} to {end_date.date()}")
-
         with DirectusManifestoScraper() as scraper:
-            params = build_directus_params(start_date, end_date)
-            scraper.fetch_directus_articles(params)
+            if args.datefile:
+                date_file = Path(args.datefile)
+                if not date_file.is_file():
+                    logger.error(f"Date file not found: {args.datefile}")
+                    sys.exit(1)
+                
+                with date_file.open('r') as f:
+                    for line in f:
+                        date_str = line.strip()
+                        if not date_str:
+                            continue
+                        try:
+                            start_date, end_date = calculate_date_range(date_str=date_str)
+                            logger.info(f"Fetching articles for date: {date_str}")
+                            params = build_directus_params(start_date, end_date)
+                            scraper.fetch_directus_articles(params)
+                        except ValueError as e:
+                            logger.error(e)
+                            continue
+            else:
+                start_date, end_date = calculate_date_range(date_str=args.date, number=args.number)
+                logger.info(f"Fetching articles from {start_date.date()} to {end_date.date()}")
+                params = build_directus_params(start_date, end_date)
+                scraper.fetch_directus_articles(params)
+
         logger.info("Successfully completed article fetching.")
     except ValueError as e:
         logger.error(e)
