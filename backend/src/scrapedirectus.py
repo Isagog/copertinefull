@@ -304,7 +304,7 @@ def calculate_date_range(args):
             target_date = datetime.strptime(f"{args.date} +0000", "%Y-%m-%d %z")
             start_date = end_date = target_date
         except ValueError:
-            raise ValueError("Invalid date format. Expected YYYY-MM-DD")
+            raise ValueError(f"Invalid date format for --date: '{args.date}'. Expected YYYY-MM-DD.")
     return start_date, end_date
 
 def build_directus_params(start_date, end_date):
@@ -332,6 +332,9 @@ def main():
             params = build_directus_params(start_date, end_date)
             scraper.fetch_directus_articles(params)
         logger.info("Successfully completed article fetching.")
+    except ValueError as e:
+        logger.error(e)
+        sys.exit(1)
     except Exception:
         logger.exception("Application failed")
         sys.exit(1)
