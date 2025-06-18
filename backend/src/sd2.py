@@ -300,15 +300,16 @@ class DirectusManifestoScraper:
             import time
             time.sleep(0.5)
             
+            # Debug: Log collection information
+            collection_name = self._get_required_env("COP_COPERTINE_COLLNAME")
+            self.logger.info(f"Querying collection '{collection_name}' for objects with editionId: '{edition_id}'")
+            
             # Try multiple query approaches to ensure we find existing objects
             query_resp = self.collection.query.fetch_objects(
                 filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
                 limit=10,
             )
             existing_objects = query_resp.objects
-            
-            # Debug: Log the actual query being performed
-            self.logger.info(f"Querying for objects with editionId: '{edition_id}'")
             
             if existing_objects:
                 self.logger.info(f"Found {len(existing_objects)} existing objects with editionId {edition_id}")
@@ -338,11 +339,22 @@ class DirectusManifestoScraper:
                 self.logger.info(f"No existing objects found with editionId {edition_id}")
                 
                 # Debug: Let's also try a broader query to see what's actually in the collection
-                all_objects_resp = self.collection.query.fetch_objects(limit=5)
-                self.logger.info(f"Debug: Collection contains {len(all_objects_resp.objects)} total objects")
+                all_objects_resp = self.collection.query.fetch_objects(limit=20)
+                self.logger.info(f"Debug: Collection '{collection_name}' contains {len(all_objects_resp.objects)} total objects")
                 for obj in all_objects_resp.objects:
                     obj_edition_id = obj.properties.get('editionId', 'N/A')
                     self.logger.info(f"  Object UUID {obj.uuid} has editionId: '{obj_edition_id}'")
+                
+                # Try a different query approach - query without filters to see all objects
+                self.logger.info("Debug: Trying alternative query to find objects with target editionId...")
+                all_resp = self.collection.query.fetch_objects(limit=50)
+                matching_objects = [obj for obj in all_resp.objects if obj.properties.get('editionId') == edition_id]
+                if matching_objects:
+                    self.logger.warning(f"FOUND {len(matching_objects)} objects with editionId '{edition_id}' using alternative query!")
+                    for obj in matching_objects:
+                        self.logger.warning(f"  Alternative query found UUID {obj.uuid} with editionId: '{obj.properties.get('editionId')}'")
+                else:
+                    self.logger.info(f"Alternative query also found no objects with editionId '{edition_id}'")
                 
         except Exception as e:
             self.logger.warning(f"Error querying for existing objects with editionId {edition_id}: {e}")
