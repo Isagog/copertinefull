@@ -97,17 +97,22 @@ class DirectusManifestoScraper:
             weaviate_url = self._get_required_env("COP_WEAVIATE_URL")
             weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY")
             
+            # Debug: Log connection details
+            self.logger.info(f"Connecting to Weaviate at: {weaviate_url}")
+            
             if "localhost" in weaviate_url or "127.0.0.1" in weaviate_url:
                 parsed_url = urlparse(weaviate_url)
                 self.weaviate_client = weaviate.connect_to_local(
                     host=parsed_url.hostname,
                     port=parsed_url.port,
                 )
+                self.logger.info(f"Connected to local Weaviate at {parsed_url.hostname}:{parsed_url.port}")
             else:
                 self.weaviate_client = weaviate.connect_to_wcs(
                     cluster_url=weaviate_url,
                     auth_credentials=weaviate.auth.AuthApiKey(weaviate_api_key),
                 )
+                self.logger.info(f"Connected to Weaviate Cloud at {weaviate_url}")
             
             self._ensure_collection()
             
