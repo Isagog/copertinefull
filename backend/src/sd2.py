@@ -97,38 +97,23 @@ class DirectusManifestoScraper:
             weaviate_url = self._get_required_env("COP_WEAVIATE_URL")
             weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY")
             
-            # Debug: Log connection details
-            self.logger.info(f"Connecting to Weaviate at: {weaviate_url}")
-            
             if "localhost" in weaviate_url or "127.0.0.1" in weaviate_url or weaviate_url.startswith("http://"):
                 parsed_url = urlparse(weaviate_url)
                 http_port = parsed_url.port
                 
-                # Determine the corresponding gRPC port based on HTTP port
-                # weaviate2025: HTTP 8090 -> gRPC 50091
-                # weaviate: HTTP 8080 -> gRPC 50051
-                if http_port == 8090:
-                    grpc_port = 50091
-                elif http_port == 8080:
-                    grpc_port = 50051
-                else:
-                    # Check for explicit gRPC port configuration
-                    grpc_port = int(os.getenv("COP_WEAVIATE_GRPC_PORT", http_port + 42011))  # Default fallback
-                
-                self.logger.info(f"Using HTTP port {http_port} and gRPC port {grpc_port}")
+                # Get gRPC port from environment variable
+                grpc_port = int(self._get_required_env("COP_WEAVIATE_GRPC_PORT"))
                 
                 self.weaviate_client = weaviate.connect_to_local(
                     host=parsed_url.hostname,
                     port=http_port,
                     grpc_port=grpc_port,
                 )
-                self.logger.info(f"Connected to local Weaviate at {parsed_url.hostname}:{http_port} (gRPC: {grpc_port})")
             else:
                 self.weaviate_client = weaviate.connect_to_wcs(
                     cluster_url=weaviate_url,
                     auth_credentials=weaviate.auth.AuthApiKey(weaviate_api_key),
                 )
-                self.logger.info(f"Connected to Weaviate Cloud at {weaviate_url}")
             
             self._ensure_collection()
             
@@ -325,72 +310,51 @@ class DirectusManifestoScraper:
         try:
             import time
             
-            collection_name = self._get_required_env("COP_COPERTINE_COLLNAME")
-            self.logger.info(f"Attempting to delete objects with editionId: '{edition_id}' from collection '{collection_name}'")
-            
-            # First, check if any objects exist with a longer wait for consistency
-            time.sleep(1)  # Give Weaviate time for consistency
+            # Check if any objects exist
             existing_objects = self.collection.query.fetch_objects(
                 filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
                 limit=100
             )
             
             if not existing_objects.objects:
-                self.logger.info(f"No existing objects found with editionId {edition_id}")
                 return True
             
             self.logger.info(f"Found {len(existing_objects.objects)} existing objects with editionId {edition_id}")
-            for obj in existing_objects.objects:
-                self.logger.info(f"  Existing object UUID: {obj.uuid}, captionStr: {obj.properties.get('captionStr', 'N/A')}")
             
-            # Delete by individual IDs (most reliable method)
+            # Delete by individual IDs
             uuids_to_delete = [obj.uuid for obj in existing_objects.objects]
-            self.logger.info(f"UUIDs to delete: {uuids_to_delete}")
-            
-            deleted_count = 0
             failed_deletions = []
             
             for uuid in uuids_to_delete:
                 try:
                     self.collection.data.delete_by_id(uuid)
-                    deleted_count += 1
-                    self.logger.info(f"Successfully deleted object with UUID {uuid}")
-                    time.sleep(0.2)  # Small delay between deletions for stability
+                    time.sleep(0.1)  # Small delay for stability
                 except Exception as e:
                     self.logger.error(f"Failed to delete object with UUID {uuid}: {e}")
                     failed_deletions.append(uuid)
             
-            self.logger.info(f"Deletion summary: {deleted_count}/{len(uuids_to_delete)} objects deleted")
-            
             if failed_deletions:
-                self.logger.error(f"Failed to delete {len(failed_deletions)} objects: {failed_deletions}")
+                self.logger.error(f"Failed to delete {len(failed_deletions)} objects")
                 return False
             
-            # Wait for deletions to process and verify
-            time.sleep(2)
+            # Log successful deletion
+            self.logger.info(f"Successfully deleted {len(uuids_to_delete)} objects with editionId {edition_id}")
             
-            # Final verification with multiple attempts
-            for attempt in range(3):
-                verify_objects = self.collection.query.fetch_objects(
-                    filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
-                    limit=10
-                )
-                
-                if not verify_objects.objects:
-                    self.logger.info(f"Deletion successful: No objects remain with editionId {edition_id}")
-                    return True
-                else:
-                    self.logger.warning(f"Verification attempt {attempt + 1}: Still found {len(verify_objects.objects)} objects with editionId {edition_id}")
-                    if attempt < 2:  # Don't sleep on the last attempt
-                        time.sleep(1)
+            # Brief wait and verification
+            time.sleep(1)
+            verify_objects = self.collection.query.fetch_objects(
+                filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
+                limit=10
+            )
             
-            # If we get here, deletion verification failed
-            self.logger.error(f"Deletion verification failed: Still found objects with editionId {edition_id}")
-            return False
+            if verify_objects.objects:
+                self.logger.error(f"Deletion verification failed: Still found {len(verify_objects.objects)} objects with editionId {edition_id}")
+                return False
+            
+            return True
                 
         except Exception as e:
             self.logger.error(f"Error in deletion operation: {e}")
-            self.logger.exception("Full exception details:")
             return False
     
     def _download_and_save_image(self, article: dict[str, Any], date: datetime) -> str | None:
@@ -506,40 +470,8 @@ class DirectusManifestoScraper:
                 "kickerStr": article.get("articleKicker"),
             }
             
-            self.logger.info(f"About to insert data: {data}")
             insert_result = self.collection.data.insert(properties=data)
-            self.logger.info(f"Insert result: {insert_result}")
             self.logger.info(f"Successfully stored copertina for {edition_id} with UUID {insert_result}")
-            
-            # Verify the insertion with multiple attempts and proper timing
-            try:
-                import time
-                
-                # Wait longer for Weaviate to index the new object
-                time.sleep(2)
-                
-                # Try verification multiple times with increasing delays
-                for attempt in range(3):
-                    verify_query = self.collection.query.fetch_objects(
-                        filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
-                        limit=5,
-                    )
-                    
-                    if verify_query.objects:
-                        self.logger.info(f"Verification successful (attempt {attempt + 1}): Found {len(verify_query.objects)} objects with editionId {edition_id}")
-                        for obj in verify_query.objects:
-                            self.logger.info(f"  Verified object UUID: {obj.uuid}, captionStr: {obj.properties.get('captionStr', 'N/A')}")
-                        break
-                    else:
-                        self.logger.warning(f"Verification attempt {attempt + 1}: No objects found with editionId {edition_id}")
-                        if attempt < 2:  # Don't sleep on the last attempt
-                            time.sleep(2)
-                else:
-                    # If we get here, all verification attempts failed
-                    self.logger.error(f"Verification failed: Could not find inserted object with editionId {edition_id} after 3 attempts")
-                    
-            except Exception as verify_error:
-                self.logger.warning(f"Failed to verify insertion: {verify_error}")
             
         except Exception:
             self.logger.exception(f"Failed to store data in Weaviate for article {article.get('id')}")
