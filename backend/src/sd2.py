@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
+import requests
 import weaviate
 import weaviate.classes as wvc
 from dotenv import load_dotenv
@@ -100,13 +100,29 @@ class DirectusManifestoScraper:
             # Debug: Log connection details
             self.logger.info(f"Connecting to Weaviate at: {weaviate_url}")
             
-            if "localhost" in weaviate_url or "127.0.0.1" in weaviate_url:
+            if "localhost" in weaviate_url or "127.0.0.1" in weaviate_url or weaviate_url.startswith("http://"):
                 parsed_url = urlparse(weaviate_url)
+                http_port = parsed_url.port
+                
+                # Determine the corresponding gRPC port based on HTTP port
+                # weaviate2025: HTTP 8090 -> gRPC 50091
+                # weaviate: HTTP 8080 -> gRPC 50051
+                if http_port == 8090:
+                    grpc_port = 50091
+                elif http_port == 8080:
+                    grpc_port = 50051
+                else:
+                    # Check for explicit gRPC port configuration
+                    grpc_port = int(os.getenv("COP_WEAVIATE_GRPC_PORT", http_port + 42011))  # Default fallback
+                
+                self.logger.info(f"Using HTTP port {http_port} and gRPC port {grpc_port}")
+                
                 self.weaviate_client = weaviate.connect_to_local(
                     host=parsed_url.hostname,
-                    port=parsed_url.port,
+                    port=http_port,
+                    grpc_port=grpc_port,
                 )
-                self.logger.info(f"Connected to local Weaviate at {parsed_url.hostname}:{parsed_url.port}")
+                self.logger.info(f"Connected to local Weaviate at {parsed_url.hostname}:{http_port} (gRPC: {grpc_port})")
             else:
                 self.weaviate_client = weaviate.connect_to_wcs(
                     cluster_url=weaviate_url,
@@ -248,16 +264,15 @@ class DirectusManifestoScraper:
         }
         
         try:
-            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
-                response = client.get(self.directus_url, params=params, headers=self.directus_headers)
-                response.raise_for_status()
+            response = requests.get(self.directus_url, params=params, headers=self.directus_headers, timeout=30.0)
+            response.raise_for_status()
+            
+            articles = response.json().get('data', [])
+            if articles:
+                return articles[0]  # Return the first (and should be only) article
+            return None
                 
-                articles = response.json().get('data', [])
-                if articles:
-                    return articles[0]  # Return the first (and should be only) article
-                return None
-                
-        except httpx.RequestError:
+        except requests.RequestException:
             self.logger.exception(f"Error fetching copertina for {date.strftime('%Y-%m-%d')}")
             return None
     
@@ -302,125 +317,79 @@ class DirectusManifestoScraper:
         return True
     
     def _delete_existing_copertine(self, edition_id: str) -> bool:
-        """Delete all existing copertine with the given editionId using GraphQL.
+        """Delete all existing copertine with the given editionId.
         
         Returns:
             bool: True if deletion was successful or no objects existed, False if deletion failed
         """
         try:
             import time
-            time.sleep(0.5)
             
             collection_name = self._get_required_env("COP_COPERTINE_COLLNAME")
-            self.logger.info(f"Using GraphQL to query collection '{collection_name}' for objects with editionId: '{edition_id}'")
+            self.logger.info(f"Attempting to delete objects with editionId: '{edition_id}' from collection '{collection_name}'")
             
-            # Use GraphQL to find existing objects (since Python client sees different data)
-            try:
-                import httpx
-                graphql_query = {
-                    "query": f"query GetCopertineByEdition {{ Get {{ Copertine(where: {{path: [\"editionId\"], operator: Equal, valueText: \"{edition_id}\"}}) {{ testataName editionId _additional {{ id }} }} }} }}"
-                }
-                
-                with httpx.Client(timeout=30.0) as client:
-                    response = client.post(
-                        "http://localhost:8090/v1/graphql",
-                        json=graphql_query,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    
-                    if response.status_code != 200:
-                        self.logger.error(f"GraphQL query failed with status {response.status_code}")
-                        return False
-                    
-                    graphql_data = response.json()
-                    existing_objects = graphql_data.get('data', {}).get('Get', {}).get('Copertine', [])
-                    
-                    if not existing_objects:
-                        self.logger.info(f"GraphQL found no existing objects with editionId {edition_id}")
-                        return True
-                    
-                    self.logger.info(f"GraphQL found {len(existing_objects)} existing objects with editionId {edition_id}")
-                    
-                    # Delete each object using GraphQL mutations
-                    deleted_count = 0
-                    failed_deletions = []
-                    
-                    for obj in existing_objects:
-                        obj_id = obj.get('_additional', {}).get('id')
-                        if not obj_id:
-                            self.logger.warning("Found object without ID, skipping")
-                            continue
-                            
-                        try:
-                            delete_mutation = {
-                                "query": f"mutation {{ Delete(class: \"Copertine\", id: \"{obj_id}\") {{ successful error {{ message }} }} }}"
-                            }
-                            delete_response = client.post(
-                                "http://localhost:8090/v1/graphql",
-                                json=delete_mutation,
-                                headers={"Content-Type": "application/json"}
-                            )
-                            
-                            if delete_response.status_code == 200:
-                                delete_data = delete_response.json()
-                                if delete_data.get('data', {}).get('Delete', {}).get('successful'):
-                                    deleted_count += 1
-                                    self.logger.info(f"Successfully deleted object with ID {obj_id}")
-                                else:
-                                    error_msg = delete_data.get('data', {}).get('Delete', {}).get('error', {}).get('message', 'Unknown error')
-                                    self.logger.error(f"Failed to delete object with ID {obj_id}: {error_msg}")
-                                    failed_deletions.append(obj_id)
-                            else:
-                                self.logger.error(f"Delete mutation failed with status {delete_response.status_code}")
-                                failed_deletions.append(obj_id)
-                                
-                        except Exception as e:
-                            self.logger.error(f"Exception while deleting object with ID {obj_id}: {e}")
-                            failed_deletions.append(obj_id)
-                    
-                    self.logger.info(f"Deletion summary: {deleted_count}/{len(existing_objects)} objects deleted")
-                    
-                    if failed_deletions:
-                        self.logger.error(f"Failed to delete {len(failed_deletions)} objects: {failed_deletions}")
-                        return False
-                    
-                    # Wait longer for Weaviate to process deletions
-                    time.sleep(2)
-                    
-                    # Verify deletion worked using GraphQL with retry logic
-                    max_retries = 3
-                    for retry in range(max_retries):
-                        verify_response = client.post(
-                            "http://localhost:8090/v1/graphql",
-                            json=graphql_query,
-                            headers={"Content-Type": "application/json"}
-                        )
-                        
-                        if verify_response.status_code == 200:
-                            verify_data = verify_response.json()
-                            remaining_objects = verify_data.get('data', {}).get('Get', {}).get('Copertine', [])
-                            
-                            if not remaining_objects:
-                                self.logger.info(f"Verified: No objects remain with editionId {edition_id}")
-                                return True
-                            else:
-                                self.logger.warning(f"Verification attempt {retry + 1}: Still found {len(remaining_objects)} objects with editionId {edition_id}")
-                                if retry < max_retries - 1:
-                                    time.sleep(1)  # Wait before retry
-                        else:
-                            self.logger.warning(f"Verification query failed with status {verify_response.status_code}")
-                    
-                    # If we get here, verification failed after all retries
-                    self.logger.error(f"After {max_retries} verification attempts, objects still exist with editionId {edition_id}")
-                    return False
-                        
-            except Exception as e:
-                self.logger.error(f"GraphQL query/delete failed: {e}")
-                self.logger.exception("Full exception details:")
+            # First, check if any objects exist with a longer wait for consistency
+            time.sleep(1)  # Give Weaviate time for consistency
+            existing_objects = self.collection.query.fetch_objects(
+                filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
+                limit=100
+            )
+            
+            if not existing_objects.objects:
+                self.logger.info(f"No existing objects found with editionId {edition_id}")
+                return True
+            
+            self.logger.info(f"Found {len(existing_objects.objects)} existing objects with editionId {edition_id}")
+            for obj in existing_objects.objects:
+                self.logger.info(f"  Existing object UUID: {obj.uuid}, captionStr: {obj.properties.get('captionStr', 'N/A')}")
+            
+            # Delete by individual IDs (most reliable method)
+            uuids_to_delete = [obj.uuid for obj in existing_objects.objects]
+            self.logger.info(f"UUIDs to delete: {uuids_to_delete}")
+            
+            deleted_count = 0
+            failed_deletions = []
+            
+            for uuid in uuids_to_delete:
+                try:
+                    self.collection.data.delete_by_id(uuid)
+                    deleted_count += 1
+                    self.logger.info(f"Successfully deleted object with UUID {uuid}")
+                    time.sleep(0.2)  # Small delay between deletions for stability
+                except Exception as e:
+                    self.logger.error(f"Failed to delete object with UUID {uuid}: {e}")
+                    failed_deletions.append(uuid)
+            
+            self.logger.info(f"Deletion summary: {deleted_count}/{len(uuids_to_delete)} objects deleted")
+            
+            if failed_deletions:
+                self.logger.error(f"Failed to delete {len(failed_deletions)} objects: {failed_deletions}")
                 return False
+            
+            # Wait for deletions to process and verify
+            time.sleep(2)
+            
+            # Final verification with multiple attempts
+            for attempt in range(3):
+                verify_objects = self.collection.query.fetch_objects(
+                    filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
+                    limit=10
+                )
+                
+                if not verify_objects.objects:
+                    self.logger.info(f"Deletion successful: No objects remain with editionId {edition_id}")
+                    return True
+                else:
+                    self.logger.warning(f"Verification attempt {attempt + 1}: Still found {len(verify_objects.objects)} objects with editionId {edition_id}")
+                    if attempt < 2:  # Don't sleep on the last attempt
+                        time.sleep(1)
+            
+            # If we get here, deletion verification failed
+            self.logger.error(f"Deletion verification failed: Still found objects with editionId {edition_id}")
+            return False
                 
         except Exception as e:
-            self.logger.error(f"Error in GraphQL delete operation: {e}")
+            self.logger.error(f"Error in deletion operation: {e}")
             self.logger.exception("Full exception details:")
             return False
     
@@ -449,18 +418,17 @@ class DirectusManifestoScraper:
         try:
             image_record_url = f"https://directus.ilmanifesto.it/items/images/{image_id}"
             
-            with httpx.Client(timeout=30.0) as client:
-                response = client.get(image_record_url, headers=self.directus_headers)
-                response.raise_for_status()
-                
-                image_record = response.json().get('data')
-                if image_record and "image" in image_record:
-                    return f"{self.assets_url}/{image_record['image']}"
-                else:
-                    self.logger.error(f"Malformed image record for image ID {image_id}")
-                    return None
+            response = requests.get(image_record_url, headers=self.directus_headers, timeout=30.0)
+            response.raise_for_status()
+            
+            image_record = response.json().get('data')
+            if image_record and "image" in image_record:
+                return f"{self.assets_url}/{image_record['image']}"
+            else:
+                self.logger.error(f"Malformed image record for image ID {image_id}")
+                return None
                     
-        except httpx.RequestError:
+        except requests.RequestException:
             self.logger.exception(f"Error getting asset URL for image {image_id}")
             return None
     
@@ -489,32 +457,31 @@ class DirectusManifestoScraper:
     def _download_image(self, image_url: str, base_filename: str) -> str | None:
         """Download image from URL and save to file."""
         try:
-            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
-                self.logger.info(f"Downloading image from: {image_url}")
-                response = client.get(image_url, headers=self.directus_headers)
-                response.raise_for_status()
-                
-                if response.status_code != HTTP_OK:
-                    self.logger.warning(f"Failed to download image. Status code: {response.status_code}")
-                    return None
-                
-                # Determine file extension from content type
-                content_type = response.headers.get('content-type')
-                if not content_type:
-                    self.logger.warning(f"No content-type header for image {image_url}")
-                    extension = '.jpg'  # Fallback
-                else:
-                    extension = mimetypes.guess_extension(content_type) or '.jpg'
-                
-                # Create full filename with extension
-                filename_with_ext = f"{base_filename}{extension}"
-                file_path = self.images_dir / filename_with_ext
-                
-                # Save the image
-                file_path.write_bytes(response.content)
-                self.logger.info(f"Image saved to {file_path}. Size: {len(response.content)} bytes")
-                
-                return filename_with_ext
+            self.logger.info(f"Downloading image from: {image_url}")
+            response = requests.get(image_url, headers=self.directus_headers, timeout=30.0)
+            response.raise_for_status()
+            
+            if response.status_code != HTTP_OK:
+                self.logger.warning(f"Failed to download image. Status code: {response.status_code}")
+                return None
+            
+            # Determine file extension from content type
+            content_type = response.headers.get('content-type')
+            if not content_type:
+                self.logger.warning(f"No content-type header for image {image_url}")
+                extension = '.jpg'  # Fallback
+            else:
+                extension = mimetypes.guess_extension(content_type) or '.jpg'
+            
+            # Create full filename with extension
+            filename_with_ext = f"{base_filename}{extension}"
+            file_path = self.images_dir / filename_with_ext
+            
+            # Save the image
+            file_path.write_bytes(response.content)
+            self.logger.info(f"Image saved to {file_path}. Size: {len(response.content)} bytes")
+            
+            return filename_with_ext
                 
         except Exception:
             self.logger.exception(f"Error downloading image {image_url}")
@@ -524,12 +491,16 @@ class DirectusManifestoScraper:
         """Store the copertina data in Weaviate."""
         try:
             edition_id = date.strftime("%d-%m-%Y")
-            iso_date = date.isoformat()
+            # Format date as RFC3339 string (required by Weaviate)
+            # Ensure timezone info is included
+            if date.tzinfo is None:
+                date = date.replace(tzinfo=timezone.utc)
+            rfc3339_date = date.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
             
             data = {
                 "testataName": "Il Manifesto",
                 "editionId": edition_id,
-                "editionDateIsoStr": iso_date,
+                "editionDateIsoStr": rfc3339_date,
                 "editionImageFnStr": image_filename,
                 "captionStr": article.get("referenceHeadline"),
                 "kickerStr": article.get("articleKicker"),
@@ -540,17 +511,33 @@ class DirectusManifestoScraper:
             self.logger.info(f"Insert result: {insert_result}")
             self.logger.info(f"Successfully stored copertina for {edition_id} with UUID {insert_result}")
             
-            # Immediately verify the insertion
+            # Verify the insertion with multiple attempts and proper timing
             try:
                 import time
-                time.sleep(1)  # Give Weaviate a moment to process
-                verify_query = self.collection.query.fetch_objects(
-                    filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
-                    limit=5,
-                )
-                self.logger.info(f"Verification: Found {len(verify_query.objects)} objects with editionId {edition_id}")
-                for obj in verify_query.objects:
-                    self.logger.info(f"  Verified object UUID: {obj.uuid}, captionStr: {obj.properties.get('captionStr')}")
+                
+                # Wait longer for Weaviate to index the new object
+                time.sleep(2)
+                
+                # Try verification multiple times with increasing delays
+                for attempt in range(3):
+                    verify_query = self.collection.query.fetch_objects(
+                        filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
+                        limit=5,
+                    )
+                    
+                    if verify_query.objects:
+                        self.logger.info(f"Verification successful (attempt {attempt + 1}): Found {len(verify_query.objects)} objects with editionId {edition_id}")
+                        for obj in verify_query.objects:
+                            self.logger.info(f"  Verified object UUID: {obj.uuid}, captionStr: {obj.properties.get('captionStr', 'N/A')}")
+                        break
+                    else:
+                        self.logger.warning(f"Verification attempt {attempt + 1}: No objects found with editionId {edition_id}")
+                        if attempt < 2:  # Don't sleep on the last attempt
+                            time.sleep(2)
+                else:
+                    # If we get here, all verification attempts failed
+                    self.logger.error(f"Verification failed: Could not find inserted object with editionId {edition_id} after 3 attempts")
+                    
             except Exception as verify_error:
                 self.logger.warning(f"Failed to verify insertion: {verify_error}")
             
