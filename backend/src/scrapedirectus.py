@@ -273,19 +273,24 @@ class DirectusManifestoScraper:
 
             for article in articles:
                 article_id = article.get("id", "N/A")
-                
+
+                has_errors = False
                 # Validate required fields
                 required_fields = ["referenceHeadline", "articleFeaturedImage"]
-                missing_required = [field for field in required_fields if not article.get(field)]
-                if missing_required:
-                    logger.error(f"Skipping article {article_id} due to missing required properties: {', '.join(missing_required)}")
-                    continue
-
+                for field in required_fields:
+                    if not article.get(field):
+                        logger.error(f"Article {article_id}: Missing required property: {field}")
+                        has_errors = True
+                
                 # Warn on missing optional fields
                 optional_fields = ["articleKicker"]
-                missing_optional = [field for field in optional_fields if not article.get(field)]
-                if missing_optional:
-                    logger.warning(f"Processing article {article_id} with missing optional properties: {', '.join(missing_optional)}")
+                for field in optional_fields:
+                    if not article.get(field):
+                        logger.warning(f"Article {article_id}: Missing property: {field}")
+
+                if has_errors:
+                    logger.info(f"Skipping article {article_id} due to missing required properties.")
+                    continue
 
                 date_published = datetime.fromisoformat(article['datePublished'])
                 edition_id = date_published.strftime("%d-%m-%Y")
