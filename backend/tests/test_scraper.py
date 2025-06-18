@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
 import json
 import logging
+from datetime import datetime, timezone
 
-from bs4 import BeautifulSoup
 import httpx
+from bs4 import BeautifulSoup
 
 # Configure logging
 logging.basicConfig(
@@ -15,19 +15,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def extract_page_info(html_content: str):
-    """Extract information from the page HTML"""
-    soup = BeautifulSoup(html_content, "html.parser")
-    logger.info("Page title: %s", soup.title.string if soup.title else "No title found")
-
-    # Find all articles
-    articles = soup.find_all("article", class_="PostCard")
-    if not articles:
-        logger.warning("No articles found")
-        return {}
-
-    # Look for the main article - it should be the first one with an image and category
-    main_article = None
+def _find_main_article(articles: list) -> BeautifulSoup | None:
+    """Find the main article from a list of articles."""
     for article in articles:
         # Check if it has an image
         img_tag = article.select_one("img[src*='static.ilmanifesto.it'], img[src*='/cdn-cgi/image']")
@@ -37,26 +26,21 @@ def extract_page_info(html_content: str):
         # Check if it has a category
         category_link = article.select_one("a.text-red-500")
         if category_link and "ECONOMIA" in category_link.get_text().strip().upper():
-            main_article = article
             logger.info("Found main article with category: %s", category_link.get_text().strip())
-            break
+            return article
+    return None
 
-    if not main_article:
-        logger.warning("No main article found")
-        # Log all articles for debugging
-        for i, article in enumerate(articles, 1):
-            logger.info("Article %d HTML:\n%s", i, article.prettify())
-        return {}
-
+def _extract_article_details(article: BeautifulSoup) -> dict:
+    """Extract details from the main article."""
     # Get the image URL
-    img_tag = main_article.select_one("img[src*='static.ilmanifesto.it'], img[src*='/cdn-cgi/image']")
+    img_tag = article.select_one("img[src*='static.ilmanifesto.it'], img[src*='/cdn-cgi/image']")
     image_url = img_tag.get("src") if img_tag else None
     logger.info("Found image URL: %s", image_url)
 
     # Get the title - try different heading levels
     title = None
     for title_selector in ["h1", "h2", "h3"]:
-        title_tag = main_article.find(title_selector)
+        title_tag = article.find(title_selector)
         if title_tag:
             title = title_tag.get_text().strip()
             logger.info("Found title with selector %s: %s", title_selector, title)
@@ -64,14 +48,14 @@ def extract_page_info(html_content: str):
 
     # Get the author and body text
     author = None
-    author_tag = main_article.select_one("span.font-serif.text-sm.italic")
+    author_tag = article.select_one("span.font-serif.text-sm.italic")
     if author_tag:
         author = author_tag.get_text().strip()
         logger.info("Found author: %s", author)
 
     # Look for body text
     body = None
-    body_tag = main_article.select_one("p.body-ns-1")
+    body_tag = article.select_one("p.body-ns-1")
     if body_tag:
         # Get the text but exclude any overline text
         overline = body_tag.select_one("span.overline-3")
@@ -86,6 +70,29 @@ def extract_page_info(html_content: str):
         "author": author,
         "body": body,
     }
+
+def extract_page_info(html_content: str):
+    """Extract information from the page HTML"""
+    soup = BeautifulSoup(html_content, "html.parser")
+    logger.info("Page title: %s", soup.title.string if soup.title else "No title found")
+
+    # Find all articles
+    articles = soup.find_all("article", class_="PostCard")
+    if not articles:
+        logger.warning("No articles found")
+        return {}
+
+    # Look for the main article
+    main_article = _find_main_article(articles)
+
+    if not main_article:
+        logger.warning("No main article found")
+        # Log all articles for debugging
+        for i, article in enumerate(articles, 1):
+            logger.info("Article %d HTML:\n%s", i, article.prettify())
+        return {}
+
+    return _extract_article_details(main_article)
 
 if __name__ == "__main__":
     # Test with today's edition

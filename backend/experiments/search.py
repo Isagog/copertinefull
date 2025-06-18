@@ -1,10 +1,9 @@
 """FastAPI endpoint for searching Copertine objects."""
 
 from contextlib import asynccontextmanager
-from typing import List
 
-from fastapi import FastAPI, HTTPException, Query
 import weaviate.exceptions
+from fastapi import FastAPI, HTTPException, Query
 
 from src.includes.mytypes import Copertina
 from src.includes.utils import init_weaviate_client
@@ -24,7 +23,7 @@ app = FastAPI(lifespan=lifespan)
 # Error messages as constants
 INVALID_MODE_ERROR = "Invalid mode. Must be 'literal' or 'fuzzy'."
 
-def query_copertine(client, searchstr: str, mode: str) -> List[Copertina]:
+def query_copertine(client, searchstr: str, mode: str) -> list[Copertina]:
     """Query the Weaviate database for Copertine objects matching search criteria.
 
     Args:
@@ -80,7 +79,7 @@ def query_copertine(client, searchstr: str, mode: str) -> List[Copertina]:
         ) from e
 
 
-@app.get("/api/v1/copertine", response_model=List[Copertina])
+@app.get("/api/v1/copertine", response_model=list[Copertina])
 async def get_copertine(
     search: str = Query(..., description="Search term for copertine objects"),
     mode: str = Query(..., description="Search mode: 'literal' or 'fuzzy'"),

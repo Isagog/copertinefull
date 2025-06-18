@@ -10,13 +10,16 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID
 
+# Add the project root to the Python path
+sys.path.append(str(Path(__file__).parent.parent))
+
 import httpx
 import weaviate
 from dotenv import load_dotenv
 from weaviate.classes.query import Filter
 from weaviate.util import generate_uuid5
 
-from .includes.weschema import COPERTINE_COLL_CONFIG
+from includes.weschema import COPERTINE_COLL_CONFIG
 
 
 class MissingEnvironmentVariableError(ValueError):
@@ -59,6 +62,8 @@ logging.basicConfig(
     ],
 )
 logging.getLogger("weaviate").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -135,36 +140,36 @@ class DirectusManifestoScraper:
             response.raise_for_status()
             image_record = response.json().get('data')
             if image_record is None:
-                logging.error(str(image_id) + " no image record found")
+                logging.error("    %s no image record found", image_id)
                 return None
             if "image" in image_record:
                 return self.assets_url + '/' + image_record["image"]
             else:
-                logging.error("Error: malformed image record")
+                logging.error("    Error: malformed image record")
                 return None
         except httpx.RequestError:
-            logger.exception("Error getting asset url for image %s", image_id)
+            logger.exception("    Error getting asset url for image %s", image_id)
             return None
 
     def download_directus_image(self, client: httpx.Client, image_url: str, filename: Path) -> str | None:
         """Download image from URL and save to file"""
         try:
-            logger.info("Attempting to download image from: %s", image_url)
+            logger.info("    Attempting to download image from: %s", image_url)
             response = client.get(image_url, headers=self.directus_headers)
             response.raise_for_status()
         except httpx.RequestError:
-            logger.exception("Error downloading image %s", image_url)
+            logger.exception("    Error downloading image %s", image_url)
             return None
         else:
             if response.status_code == HTTP_STATUS_OK:
                 content_type = response.headers.get('content-type')
                 if not content_type:
-                    logger.warning("No content-type header found for image %s", image_url)
+                    logger.warning("    No content-type header found for image %s", image_url)
                     return None
 
                 extension = mimetypes.guess_extension(content_type)
                 if not extension:
-                    logger.warning("Could not determine file extension for content-type %s", content_type)
+                    logger.warning("    Could not determine file extension for content-type %s", content_type)
                     # Fallback to a common extension like .jpg if needed, or handle as an error
                     extension = '.jpg' # Example fallback
 
@@ -176,12 +181,12 @@ class DirectusManifestoScraper:
                     abs_path.parent.mkdir(parents=True, exist_ok=True)
                     abs_path.write_bytes(response.content)
                 except Exception:
-                    logger.exception("Error saving image to %s", abs_path)
+                    logger.exception("    Error saving image to %s", abs_path)
                     return None
                 else:
-                    logger.info("Image saved successfully to %s. Size: %d bytes", abs_path, len(response.content))
+                    logger.info("    Image saved successfully to %s. Size: %d bytes", abs_path, len(response.content))
                     return new_filename_with_ext.name
-            logger.warning("Failed to download image. Status code: %d", response.status_code)
+            logger.warning("    Failed to download image. Status code: %d", response.status_code)
             return None
 
     def slugify(self, text: str) -> str:
@@ -232,7 +237,7 @@ class DirectusManifestoScraper:
                 for obj in response.objects:
                     self.collection.data.delete_by_id(obj.uuid)
                     logger.info(
-                        "Deleted existing object with editionId %s and UUID %s",
+                        "    Deleted existing object with editionId %s and UUID %s",
                         edition_id,
                         obj.uuid,
                     )
@@ -247,55 +252,89 @@ class DirectusManifestoScraper:
             }
             self.collection.data.insert(properties=data, uuid=uuid)
             logger.info(
-                "Successfully stored data in Weaviate for date %s with UUID %s",
+                "    Successfully stored data in Weaviate for date %s with UUID %s",
                 edition_id,
                 uuid,
             )
         except Exception:
             logger.exception(
-                "Failed to store data in Weaviate for article %s", article.get("id")
+                "    Failed to store data in Weaviate for article %s", article.get("id")
             )
 
-    def fetch_directus_articles(self, params: dict):
+    def _validate_article(self, article: dict) -> bool:
+        """Validate that an article has all the required properties."""
+        article_id = article.get("id", "N/A")
+        has_errors = False
+        required_fields = ["referenceHeadline", "articleFeaturedImage"]
+        for field in required_fields:
+            if not article.get(field):
+                logger.error(f"    Article {article_id}: Missing required property: {field}")
+                has_errors = True
+
+        optional_fields = ["articleKicker"]
+        for field in optional_fields:
+            if not article.get(field):
+                logger.warning(f"    Article {article_id}: Missing property: {field}")
+
+        return not has_errors
+
+    def _process_image(self, article: dict, client: httpx.Client, date_str: str):
+        """Download and process the image for an article."""
+        article_id = article.get("id", "N/A")
+        image_id = article.get('articleFeaturedImage')
+
+        image_url = self.get_asset_url(image_id)
+        if not image_url:
+            logger.warning(f"    Could not get asset URL for image {image_id}. Skipping article {article_id}.")
+            return
+
+        image_filename = self.transform_image_url_to_filename(article, date_str)
+        if not image_filename:
+            logger.error(f"    Failed to generate image filename for article {article_id}. Skipping.")
+            return
+
+        image_path = self.images_dir / image_filename
+        final_image_filename = self.download_directus_image(client, image_url, image_path)
+        if final_image_filename:
+            self.store_in_weaviate(article, final_image_filename)
+        else:
+            logger.error(f"    Failed to download image for article {article_id}. Skipping.")
+
+    def _process_article(self, article: dict, client: httpx.Client, processed_edition_ids: set, is_single_date: bool):
+        date_published = datetime.fromisoformat(article['datePublished'])
+        date_str = date_published.strftime("%Y-%m-%d")
+        if not is_single_date:
+            logger.info(f"Fetching article for date: {date_str}")
+
+        if not self._validate_article(article):
+            logger.info(f"    Skipping article {article.get('id', 'N/A')} due to missing required properties.")
+            return
+
+        edition_id = date_published.strftime("%d-%m-%Y")
+        if edition_id in processed_edition_ids:
+            logger.info(f"    Already processed edition {edition_id}, skipping article {article.get('id', 'N/A')}.")
+            return
+        processed_edition_ids.add(edition_id)
+
+        self._process_image(article, client, date_str)
+
+    def fetch_directus_articles(self, params: dict, is_single_date: bool = False):
         client = httpx.Client(timeout=30.0, follow_redirects=True)
         processed_edition_ids = set()
         try:
             response = client.get(self.directus_url, params=params, headers=self.directus_headers)
             response.raise_for_status()
             articles = response.json().get('data', [])
-            logger.info(f"Retrieved {len(articles)} articles from Directus.")
+
+            if is_single_date:
+                if len(articles) == 0:
+                    logger.info("    Retrieved 0 articles from Directus.")
+                    return
+            else:
+                logger.info(f"Retrieved {len(articles)} articles from Directus.")
 
             for article in articles:
-                date_published = datetime.fromisoformat(article['datePublished'])
-                edition_id = date_published.strftime("%d-%m-%Y")
-
-                if edition_id in processed_edition_ids:
-                    logger.info(f"Already processed edition {edition_id}, skipping article {article['id']}.")
-                    continue
-                
-                processed_edition_ids.add(edition_id)
-
-                image_id = article.get('articleFeaturedImage')
-                if not image_id:
-                    logger.warning(f"Article {article['id']} has no featured image. Skipping.")
-                    continue
-
-                image_url = self.get_asset_url(image_id)
-                if not image_url:
-                    logger.warning(f"Could not get asset URL for image {image_id}. Skipping article {article['id']}.")
-                    continue
-
-                date_str = date_published.strftime("%Y-%m-%d")
-                image_filename = self.transform_image_url_to_filename(article, date_str)
-                if image_filename:
-                    image_path = self.images_dir / image_filename
-                    final_image_filename = self.download_directus_image(client, image_url, image_path)
-                    if final_image_filename:
-                        self.store_in_weaviate(article, final_image_filename)
-                    else:
-                        logger.error(f"Failed to download image for article {article['id']}. Skipping.")
-                else:
-                    logger.error(f"Failed to generate image filename for article {article['id']}. Skipping.")
+                self._process_article(article, client, processed_edition_ids, is_single_date)
         finally:
             client.close()
 
@@ -356,8 +395,8 @@ def build_directus_params(start_date, end_date):
         'fields': 'id,articleEdition,referenceHeadline,articleTag,articleKicker,datePublished,author,headline,articleEditionPosition,articleFeaturedImageDescription,articleFeaturedImage',
         'filter[syncSource][_eq]': 'wp',
         'filter[articleEditionPosition][_eq]': 1,
-        'filter[articleFeaturedImage][_nnull]': True,
-        'filter[referenceHeadline][_nnull]': True,
+        # 'filter[articleFeaturedImage][_nnull]': True,
+        # 'filter[referenceHeadline][_nnull]': True,
         'sort': '-datePublished',
         'limit': -1 # Fetch all matching
     }
@@ -383,17 +422,21 @@ def main():
                             continue
                         try:
                             start_date, end_date = calculate_date_range(date_str=date_str)
-                            logger.info(f"Fetching articles for date: {date_str}")
+                            logger.info(f"Fetching article for date: {date_str}")
                             params = build_directus_params(start_date, end_date)
-                            scraper.fetch_directus_articles(params)
+                            scraper.fetch_directus_articles(params, is_single_date=True)
                         except ValueError:
                             logger.exception()
                             continue
             else:
                 start_date, end_date = calculate_date_range(date_str=args.date, number=args.number)
-                logger.info(f"Fetching articles from {start_date.date()} to {end_date.date()}")
                 params = build_directus_params(start_date, end_date)
-                scraper.fetch_directus_articles(params)
+                if args.date:
+                    logger.info(f"Fetching article for date: {args.date}")
+                    scraper.fetch_directus_articles(params, is_single_date=True)
+                else:
+                    logger.info(f"Fetching articles from {start_date.date()} to {end_date.date()}")
+                    scraper.fetch_directus_articles(params)
 
         logger.info("Successfully completed article fetching.")
     except ValueError:

@@ -18,6 +18,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Italian month names mapping
+TWO_DIGIT_YEAR_LENGTH = 2
 ITALIAN_MONTHS = {
     'gen': '01', 'gennaio': '01',
     'feb': '02', 'febbraio': '02',
@@ -42,7 +43,7 @@ def parse_date(date_str: str) -> str:
             if month in ITALIAN_MONTHS:
                 month_num = ITALIAN_MONTHS[month]
                 # Handle 2-digit years
-                if len(year) == 2:
+                if len(year) == TWO_DIGIT_YEAR_LENGTH:
                     year = '20' + year  # Assume 20xx for years 00-99
                 return f"{year}-{month_num}-{day.zfill(2)}"
         except (ValueError, KeyError):

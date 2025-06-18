@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta, timezone
 import json
 import logging
-from pathlib import Path
 import time
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
+from pathlib import Path
 
-from bs4 import BeautifulSoup
 import httpx
+from bs4 import BeautifulSoup
 
 # Configure logging
 logging.basicConfig(
@@ -18,72 +18,55 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def extract_page_info(html_content: str) -> dict:
-    """Extract information from the page HTML"""
-    soup = BeautifulSoup(html_content, "html.parser")
+def _is_main_article(article: BeautifulSoup) -> bool:
+    """Check if an article is the main article."""
+    # Check if it has a large image container
+    img_container = article.select_one("div.w-full.overflow-hidden.order-1")
+    if not img_container:
+        return False
 
-    # Find all articles
-    articles = soup.find_all("article", class_="PostCard")
-    if not articles:
-        logger.warning("No articles found")
-        return {}
+    # Check if it has an image
+    img_tag = img_container.select_one("img[src*='static.ilmanifesto.it'], img[src*='/cdn-cgi/image']")
+    if not img_tag:
+        return False
 
-    # Look for the main article - it should be the first one with:
-    # 1. A large image (in a div.w-full)
-    # 2. A category link
-    # 3. A title in h3
-    main_article = None
-    for article in articles:
-        # Check if it has a large image container
-        img_container = article.select_one("div.w-full.overflow-hidden.order-1")
-        if not img_container:
-            continue
+    # Check if it has a category
+    category_link = article.select_one("a.text-red-500")
+    if not category_link:
+        return False
 
-        # Check if it has an image
-        img_tag = img_container.select_one("img[src*='static.ilmanifesto.it'], img[src*='/cdn-cgi/image']")
-        if not img_tag:
-            continue
+    # Check if it has a title
+    title_tag = article.find("h3")
+    if not title_tag:
+        return False
 
-        # Check if it has a category
-        category_link = article.select_one("a.text-red-500")
-        if not category_link:
-            continue
+    return True
 
-        # Check if it has a title
-        title_tag = article.find("h3")
-        if not title_tag:
-            continue
-
-        main_article = article
-        break
-
-    if not main_article:
-        logger.warning("No main article found")
-        return {}
-
+def _extract_article_details(article: BeautifulSoup) -> dict:
+    """Extract details from the main article."""
     # Get the category
-    category_link = main_article.select_one("a.text-red-500")
+    category_link = article.select_one("a.text-red-500")
     category = category_link.get_text().strip() if category_link else None
 
     # Get the image URL
-    img_tag = main_article.select_one("img[src*='static.ilmanifesto.it'], img[src*='/cdn-cgi/image']")
+    img_tag = article.select_one("img[src*='static.ilmanifesto.it'], img[src*='/cdn-cgi/image']")
     image_url = img_tag.get("src") if img_tag else None
 
     # Get the title
     title = None
-    title_tag = main_article.find("h3")
+    title_tag = article.find("h3")
     if title_tag:
         title = title_tag.get_text().strip()
 
     # Get the author
     author = None
-    author_tag = main_article.select_one("span.font-serif.text-sm.italic")
+    author_tag = article.select_one("span.font-serif.text-sm.italic")
     if author_tag:
         author = author_tag.get_text().strip()
 
     # Get the body text
     body = None
-    body_tag = main_article.select_one("p.body-ns-1")
+    body_tag = article.select_one("p.body-ns-1")
     if body_tag:
         # Get the text but exclude any overline text
         overline = body_tag.select_one("span.overline-3")
@@ -98,6 +81,29 @@ def extract_page_info(html_content: str) -> dict:
         "image_url": image_url,
         "body": body,
     }
+
+def extract_page_info(html_content: str) -> dict:
+    """Extract information from the page HTML"""
+    soup = BeautifulSoup(html_content, "html.parser")
+
+    # Find all articles
+    articles = soup.find_all("article", class_="PostCard")
+    if not articles:
+        logger.warning("No articles found")
+        return {}
+
+    # Look for the main article
+    main_article = None
+    for article in articles:
+        if _is_main_article(article):
+            main_article = article
+            break
+
+    if not main_article:
+        logger.warning("No main article found")
+        return {}
+
+    return _extract_article_details(main_article)
 
 def check_past_dates(num_days: int = 10):
     """Check articles from the past num_days"""
@@ -134,7 +140,7 @@ def check_past_dates(num_days: int = 10):
                         logger.warning("No article found for date %s", date_str)
                 else:
                     logger.warning("Failed to fetch page for date %s. Status code: %d", date_str, response.status_code)
-            except Exception as e:
+            except Exception:
                 logger.exception("Error processing date %s", date_str)
 
             # Move to previous day

@@ -1,10 +1,9 @@
-from datetime import datetime, timezone
 import logging
 import os
-from typing import Optional
+from datetime import datetime, timezone
 
-from dotenv import load_dotenv
 import weaviate
+from dotenv import load_dotenv
 
 
 class WeaviateClientInitializationError(Exception):
@@ -47,7 +46,7 @@ def init_weaviate_client() -> weaviate.WeaviateClient:
         return client
 
 
-def extract_date_from_filename(filename: str) -> Optional[datetime]:
+def extract_date_from_filename(filename: str) -> datetime | None:
     """Extract date from filename pattern il_manifesto_del_D_MONTH_YYYY_cover.jpg."""
     try:
         month_map = {
