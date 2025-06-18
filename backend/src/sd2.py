@@ -297,8 +297,8 @@ class DirectusManifestoScraper:
         """Delete all existing copertine with the given editionId."""
         try:
             query_resp = self.collection.query.fetch_objects(
-                where=wvc.query.Filter.by_property("editionId").equal(edition_id),
-                limit=10
+                filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
+                limit=10,
             )
             existing_objects = query_resp.objects
             
@@ -432,8 +432,24 @@ class DirectusManifestoScraper:
                 "kickerStr": article.get("articleKicker"),
             }
             
+            self.logger.info(f"About to insert data: {data}")
             insert_result = self.collection.data.insert(properties=data)
+            self.logger.info(f"Insert result: {insert_result}")
             self.logger.info(f"Successfully stored copertina for {edition_id} with UUID {insert_result}")
+            
+            # Immediately verify the insertion
+            try:
+                import time
+                time.sleep(1)  # Give Weaviate a moment to process
+                verify_query = self.collection.query.fetch_objects(
+                    filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
+                    limit=5,
+                )
+                self.logger.info(f"Verification: Found {len(verify_query.objects)} objects with editionId {edition_id}")
+                for obj in verify_query.objects:
+                    self.logger.info(f"  Verified object UUID: {obj.uuid}, captionStr: {obj.properties.get('captionStr')}")
+            except Exception as verify_error:
+                self.logger.warning(f"Failed to verify insertion: {verify_error}")
             
         except Exception:
             self.logger.exception(f"Failed to store data in Weaviate for article {article.get('id')}")
