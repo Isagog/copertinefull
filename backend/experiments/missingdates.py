@@ -1,9 +1,10 @@
-import os
-import weaviate
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
-from pathlib import Path
 import logging
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import weaviate
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(
@@ -11,6 +12,14 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+class WeaviateURLError(ValueError):
+    """Custom exception for missing Weaviate URL."""
+
+    def __init__(self, message="COP_WEAVIATE_URL environment variable not set."):
+        self.message = message
+        super().__init__(self.message)
+
 
 def init_weaviate_client():
     """Initializes and returns a Weaviate client."""
@@ -21,7 +30,7 @@ def init_weaviate_client():
     weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY", "")
 
     if not weaviate_url:
-        raise ValueError("COP_WEAVIATE_URL environment variable not set.")
+        raise WeaviateURLError()
 
     if weaviate_url in ["localhost", "127.0.0.1"]:
         return weaviate.connect_to_local()
@@ -40,7 +49,10 @@ def get_all_dates_from_weaviate(client, collection_name):
             limit=10000, # Adjust limit as needed
             return_properties=["editionId"]
         )
-        
+    except Exception:
+        logger.exception(f"Failed to fetch dates from Weaviate collection '{collection_name}'")
+        return set()
+    else:
         dates = set()
         for obj in response.objects:
             try:
@@ -49,9 +61,6 @@ def get_all_dates_from_weaviate(client, collection_name):
             except (ValueError, KeyError) as e:
                 logger.warning(f"Skipping invalid date format or missing 'editionId': {obj.properties}. Error: {e}")
         return dates
-    except Exception as e:
-        logger.exception(f"Failed to fetch dates from Weaviate collection '{collection_name}': {e}")
-        return set()
 
 def find_missing_dates(existing_dates, ignored_dates_str):
     """
@@ -116,8 +125,8 @@ def main():
         else:
             logger.error("Could not retrieve any dates from Weaviate.")
             
-    except Exception as e:
-        logger.exception(f"An error occurred: {e}")
+    except Exception:
+        logger.exception("An error occurred")
     finally:
         if 'client' in locals() and client.is_connected():
             client.close()

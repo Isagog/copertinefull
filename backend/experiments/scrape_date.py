@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +13,7 @@ import weaviate
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from weaviate.collections.classes.filters import Filter
+
 from includes.weschema import COPERTINE_COLL_CONFIG
 
 # Configure logging
@@ -385,12 +386,20 @@ class ManifestoScraper:
         """Ensure cleanup when used as context manager"""
         self.cleanup()
 
+class InvalidDateFormatError(ValueError):
+    """Custom exception for invalid date format."""
+
+    def __init__(self, message="Invalid date format. Expected YYYY-MM-DD"):
+        self.message = message
+        super().__init__(self.message)
+
+
 def parse_date(date_str: str) -> datetime:
     """Parse date string in YYYY-MM-DD format"""
     try:
         return datetime.strptime(f"{date_str} +0000", "%Y-%m-%d %z")
-    except ValueError:
-        raise ValueError("Invalid date format. Expected YYYY-MM-DD") from None
+    except ValueError as e:
+        raise InvalidDateFormatError() from e
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape Il Manifesto edition for a specific date")

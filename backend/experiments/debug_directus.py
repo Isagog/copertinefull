@@ -1,7 +1,7 @@
 import argparse
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -16,6 +16,15 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+
+
+class InvalidDateFormatError(ValueError):
+    """Custom exception for invalid date formats."""
+
+    def __init__(self, message="Invalid date format. Expected YYYY-MM-DD"):
+        self.message = message
+        super().__init__(self.message)
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
@@ -33,8 +42,8 @@ def calculate_date_range(args):
     try:
         target_date = datetime.strptime(f"{args.date} +0000", "%Y-%m-%d %z")
         start_date = end_date = target_date
-    except ValueError:
-        raise ValueError("Invalid date format. Expected YYYY-MM-DD")
+    except ValueError as e:
+        raise InvalidDateFormatError() from e
     return start_date, end_date
 
 def build_directus_params(start_date, end_date):
@@ -92,7 +101,7 @@ def main():
             else:
                 logger.info("No articles found matching the criteria.")
 
-    except Exception as e:
+    except Exception:
         logger.exception("An error occurred during the process.")
 
 if __name__ == "__main__":

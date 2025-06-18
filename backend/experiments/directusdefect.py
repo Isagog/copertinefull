@@ -1,8 +1,7 @@
 import argparse
-import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -65,6 +64,42 @@ def check_article_properties(article):
             
     return missing_required, missing_optional
 
+def process_date(date_str, directus_url, directus_headers):
+    try:
+        target_date = datetime.strptime(f"{date_str} +0000", "%Y-%m-%d %z")
+        start_date = end_date = target_date
+    except ValueError:
+        print(f"{date_str} - Invalid date format. Expected YYYY-MM-DD.")
+        return
+
+    params = build_directus_params(start_date, end_date)
+    
+    try:
+        with httpx.Client() as client:
+            response = client.get(directus_url, params=params, headers=directus_headers)
+            response.raise_for_status()
+            articles = response.json().get('data', [])
+
+            if not articles:
+                print(f"{date_str} - No article found for this date.")
+                return
+
+            article = articles[0]
+            print(f"{date_str} - Article found with ID: {article.get('id')}")
+            
+            missing_required, missing_optional = check_article_properties(article)
+            
+            for prop in missing_required:
+                print(f"\tERROR - Missing required property: {prop}")
+            
+            for prop in missing_optional:
+                print(f"\tWARNING - Missing property: {prop}")
+
+    except httpx.HTTPStatusError as e:
+        print(f"{date_str} - HTTP error occurred: {e}", file=sys.stderr)
+    except Exception as e:
+        print(f"{date_str} - An unexpected error occurred: {e}", file=sys.stderr)
+
 def main():
     args = parse_arguments()
     
@@ -92,41 +127,7 @@ def main():
             date_str = line.strip()
             if not date_str:
                 continue
-            
-            try:
-                target_date = datetime.strptime(f"{date_str} +0000", "%Y-%m-%d %z")
-                start_date = end_date = target_date
-            except ValueError:
-                print(f"{date_str} - Invalid date format. Expected YYYY-MM-DD.")
-                continue
-
-            params = build_directus_params(start_date, end_date)
-            
-            try:
-                with httpx.Client() as client:
-                    response = client.get(directus_url, params=params, headers=directus_headers)
-                    response.raise_for_status()
-                    articles = response.json().get('data', [])
-
-                    if not articles:
-                        print(f"{date_str} - No article found for this date.")
-                        continue
-
-                    article = articles[0]
-                    print(f"{date_str} - Article found with ID: {article.get('id')}")
-                    
-                    missing_required, missing_optional = check_article_properties(article)
-                    
-                    for prop in missing_required:
-                        print(f"\tERROR - Missing required property: {prop}")
-                    
-                    for prop in missing_optional:
-                        print(f"\tWARNING - Missing property: {prop}")
-
-            except httpx.HTTPStatusError as e:
-                print(f"{date_str} - HTTP error occurred: {e}", file=sys.stderr)
-            except Exception as e:
-                print(f"{date_str} - An unexpected error occurred: {e}", file=sys.stderr)
+            process_date(date_str, directus_url, directus_headers)
 
 if __name__ == "__main__":
     main()

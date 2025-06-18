@@ -5,7 +5,6 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -262,6 +261,63 @@ class DirectusManifestoScraper:
                 "    Failed to store data in Weaviate for article %s", article.get("id")
             )
 
+    def _validate_article(self, article: dict) -> bool:
+        """Validate that an article has all the required properties."""
+        article_id = article.get("id", "N/A")
+        has_errors = False
+        required_fields = ["referenceHeadline", "articleFeaturedImage"]
+        for field in required_fields:
+            if not article.get(field):
+                logger.error(f"    Article {article_id}: Missing required property: {field}")
+                has_errors = True
+
+        optional_fields = ["articleKicker"]
+        for field in optional_fields:
+            if not article.get(field):
+                logger.warning(f"    Article {article_id}: Missing property: {field}")
+
+        return not has_errors
+
+    def _process_image(self, article: dict, client: httpx.Client, date_str: str):
+        """Download and process the image for an article."""
+        article_id = article.get("id", "N/A")
+        image_id = article.get('articleFeaturedImage')
+
+        image_url = self.get_asset_url(image_id)
+        if not image_url:
+            logger.warning(f"    Could not get asset URL for image {image_id}. Skipping article {article_id}.")
+            return
+
+        image_filename = self.transform_image_url_to_filename(article, date_str)
+        if not image_filename:
+            logger.error(f"    Failed to generate image filename for article {article_id}. Skipping.")
+            return
+
+        image_path = self.images_dir / image_filename
+        final_image_filename = self.download_directus_image(client, image_url, image_path)
+        if final_image_filename:
+            self.store_in_weaviate(article, final_image_filename)
+        else:
+            logger.error(f"    Failed to download image for article {article_id}. Skipping.")
+
+    def _process_article(self, article: dict, client: httpx.Client, processed_edition_ids: set, is_single_date: bool):
+        date_published = datetime.fromisoformat(article['datePublished'])
+        date_str = date_published.strftime("%Y-%m-%d")
+        if not is_single_date:
+            logger.info(f"Fetching article for date: {date_str}")
+
+        if not self._validate_article(article):
+            logger.info(f"    Skipping article {article.get('id', 'N/A')} due to missing required properties.")
+            return
+
+        edition_id = date_published.strftime("%d-%m-%Y")
+        if edition_id in processed_edition_ids:
+            logger.info(f"    Already processed edition {edition_id}, skipping article {article.get('id', 'N/A')}.")
+            return
+        processed_edition_ids.add(edition_id)
+
+        self._process_image(article, client, date_str)
+
     def fetch_directus_articles(self, params: dict, is_single_date: bool = False):
         client = httpx.Client(timeout=30.0, follow_redirects=True)
         processed_edition_ids = set()
@@ -278,57 +334,7 @@ class DirectusManifestoScraper:
                 logger.info(f"Retrieved {len(articles)} articles from Directus.")
 
             for article in articles:
-                date_published = datetime.fromisoformat(article['datePublished'])
-                date_str = date_published.strftime("%Y-%m-%d")
-                if not is_single_date:
-                    logger.info(f"Fetching article for date: {date_str}")
-                article_id = article.get("id", "N/A")
-
-                has_errors = False
-                # Validate required fields
-                required_fields = ["referenceHeadline"]
-                for field in required_fields:
-                    if not article.get(field):
-                        logger.error(f"    Article {article_id}: Missing required property: {field}")
-                        has_errors = True
-                
-                # Warn on missing optional fields
-                optional_fields = ["articleKicker", "articleFeaturedImage"]
-                for field in optional_fields:
-                    if not article.get(field):
-                        logger.warning(f"    Article {article_id}: Missing property: {field}")
-
-                if has_errors:
-                    logger.info(f"    Skipping article {article_id} due to missing required properties.")
-                    continue
-
-                edition_id = date_published.strftime("%d-%m-%Y")
-
-                if edition_id in processed_edition_ids:
-                    logger.info(f"    Already processed edition {edition_id}, skipping article {article_id}.")
-                    continue
-                
-                processed_edition_ids.add(edition_id)
-
-                image_id = article.get('articleFeaturedImage')
-                if not image_id:
-                    logger.warning(f"    Article {article_id}: Missing 'articleFeaturedImage', skipping image processing.")
-                    continue
-                image_url = self.get_asset_url(image_id)
-                if not image_url:
-                    logger.warning(f"    Could not get asset URL for image {image_id}. Skipping article {article_id}.")
-                    continue
-
-                image_filename = self.transform_image_url_to_filename(article, date_str)
-                if image_filename:
-                    image_path = self.images_dir / image_filename
-                    final_image_filename = self.download_directus_image(client, image_url, image_path)
-                    if final_image_filename:
-                        self.store_in_weaviate(article, final_image_filename)
-                    else:
-                        logger.error(f"    Failed to download image for article {article_id}. Skipping.")
-                else:
-                    logger.error(f"    Failed to generate image filename for article {article_id}. Skipping.")
+                self._process_article(article, client, processed_edition_ids, is_single_date)
         finally:
             client.close()
 

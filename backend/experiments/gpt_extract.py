@@ -1,8 +1,7 @@
 import base64
 import os
-from pathlib import Path
 import re
-from typing import Tuple
+from pathlib import Path
 
 from openai import OpenAI
 
@@ -28,7 +27,7 @@ class ManifestoGPTExtractor:
             logger.exception("Error loading image %s", filename)
             raise
 
-    def parse_gpt_response(self, response_text: str) -> Tuple[str, str]:
+    def parse_gpt_response(self, response_text: str) -> tuple[str, str]:
         caption_match = re.search(
             r"CAPTION:\s*(.*?)(?=DESCRIPTION:|$)", response_text, re.DOTALL,
         )
