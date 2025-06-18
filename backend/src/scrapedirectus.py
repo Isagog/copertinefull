@@ -8,16 +8,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
-from uuid import UUID
 
 # Add the project root to the Python path
 sys.path.append(str(Path(__file__).parent.parent))
 
 import httpx
 import weaviate
+import weaviate.classes as wvc
 from dotenv import load_dotenv
-from weaviate.classes.query import Filter
-from weaviate.util import generate_uuid5
 
 from includes.weschema import COPERTINE_COLL_CONFIG
 
@@ -216,17 +214,11 @@ class DirectusManifestoScraper:
             return f"il-manifesto_{formatted_date}_{slug}"
 
     def store_in_weaviate(self, article: dict[str, Any], image_filename: str):
-        """Store scraped data in Weaviate, overwriting if it already exists."""
+        """Store scraped data in Weaviate using editionId as the logical key."""
         try:
             date_published = datetime.fromisoformat(article["datePublished"])
             edition_id = date_published.strftime("%d-%m-%Y")
             iso_date = date_published.isoformat()
-
-            # Generate a deterministic UUID based on the editionId
-            # The namespace UUID is arbitrary, but must be constant.
-            # Using the UUID of the string "ilmanifesto.it" as a namespace.
-            namespace_uuid = UUID("c1e7c19c-2c4c-5c9c-9c9c-c1e7c19c2c4c")
-            uuid = generate_uuid5(edition_id, namespace_uuid)
 
             data = {
                 "testataName": "Il Manifesto",
@@ -237,26 +229,44 @@ class DirectusManifestoScraper:
                 "kickerStr": article.get("articleKicker"),
             }
 
+            # First, query for existing objects with the same editionId
             try:
-                self.collection.data.insert(properties=data, uuid=uuid)
-                logger.info(
-                    "    Successfully stored data in Weaviate for date %s with UUID %s",
-                    edition_id,
-                    uuid,
+                query_resp = self.collection.query.fetch_objects(
+                    where=wvc.query.Filter.by_property("editionId").equal(edition_id),
+                    limit=10  # Should be more than enough for duplicates
                 )
-            except weaviate.exceptions.UnexpectedStatusCodeError as e:
-                if "already exists" in str(e):
-                    self.collection.data.replace(properties=data, uuid=uuid)
-                    logger.info(
-                        "    Successfully updated data in Weaviate for date %s with UUID %s",
-                        edition_id,
-                        uuid,
-                    )
+                existing_objects = query_resp.objects
+                
+                if existing_objects:
+                    logger.info("    Found %d existing objects with editionId %s", len(existing_objects), edition_id)
+                    
+                    # Delete existing objects one by one to ensure they're removed
+                    deleted_count = 0
+                    for obj in existing_objects:
+                        try:
+                            self.collection.data.delete_by_id(obj.uuid)
+                            deleted_count += 1
+                            logger.info("    Deleted existing object with UUID %s for editionId %s", obj.uuid, edition_id)
+                        except Exception as e:
+                            logger.warning("    Failed to delete object with UUID %s: %s", obj.uuid, e)
+                    
+                    logger.info("    Successfully deleted %d/%d existing objects with editionId %s", 
+                              deleted_count, len(existing_objects), edition_id)
                 else:
-                    raise
-        except Exception:
+                    logger.info("    No existing objects found with editionId %s", edition_id)
+                    
+            except Exception as e:
+                logger.warning("    Error querying for existing objects with editionId %s: %s", edition_id, e)
+
+            # Insert the new object
+            insert_result = self.collection.data.insert(properties=data)
+            logger.info("    Successfully stored data in Weaviate for editionId %s with UUID %s", 
+                       edition_id, insert_result)
+            
+        except Exception as e:
             logger.exception(
-                "    Failed to store data in Weaviate for article %s", article.get("id")
+                "    Failed to store data in Weaviate for article %s: %s", 
+                article.get("id"), str(e)
             )
 
     def _validate_article(self, article: dict) -> bool:
@@ -298,7 +308,7 @@ class DirectusManifestoScraper:
         else:
             logger.error(f"    Failed to download image for article {article_id}. Skipping.")
 
-    def _process_article(self, article: dict, client: httpx.Client, processed_edition_ids: set, is_single_date: bool):
+    def _process_article(self, article: dict, client: httpx.Client, is_single_date: bool):
         date_published = datetime.fromisoformat(article['datePublished'])
         date_str = date_published.strftime("%Y-%m-%d")
         if not is_single_date:
@@ -308,17 +318,10 @@ class DirectusManifestoScraper:
             logger.info(f"    Skipping article {article.get('id', 'N/A')} due to missing required properties.")
             return
 
-        edition_id = date_published.strftime("%d-%m-%Y")
-        if edition_id in processed_edition_ids:
-            logger.info(f"    Already processed edition {edition_id}, skipping article {article.get('id', 'N/A')}.")
-            return
-        processed_edition_ids.add(edition_id)
-
         self._process_image(article, client, date_str)
 
     def fetch_directus_articles(self, params: dict, is_single_date: bool = False):
         client = httpx.Client(timeout=30.0, follow_redirects=True)
-        processed_edition_ids = set()
         try:
             response = client.get(self.directus_url, params=params, headers=self.directus_headers)
             response.raise_for_status()
@@ -332,7 +335,7 @@ class DirectusManifestoScraper:
                 logger.info(f"Retrieved {len(articles)} articles from Directus.")
 
             for article in articles:
-                self._process_article(article, client, processed_edition_ids, is_single_date)
+                self._process_article(article, client, is_single_date)
         finally:
             client.close()
 
@@ -393,8 +396,6 @@ def build_directus_params(start_date, end_date):
         'fields': 'id,articleEdition,referenceHeadline,articleTag,articleKicker,datePublished,author,headline,articleEditionPosition,articleFeaturedImageDescription,articleFeaturedImage',
         'filter[syncSource][_eq]': 'wp',
         'filter[articlePositionCover][_eq]': 1,
-        # 'filter[articleFeaturedImage][_nnull]': True,
-        # 'filter[referenceHeadline][_nnull]': True,
         'sort': '-datePublished',
         'limit': -1 # Fetch all matching
     }
