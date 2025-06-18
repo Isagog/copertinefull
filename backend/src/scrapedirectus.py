@@ -392,7 +392,7 @@ def build_directus_params(start_date, end_date):
     params = {
         'fields': 'id,articleEdition,referenceHeadline,articleTag,articleKicker,datePublished,author,headline,articleEditionPosition,articleFeaturedImageDescription,articleFeaturedImage',
         'filter[syncSource][_eq]': 'wp',
-        'filter[articleEditionPosition][_eq]': 1,
+        'filter[articlePositionCover][_eq]': 1,
         # 'filter[articleFeaturedImage][_nnull]': True,
         # 'filter[referenceHeadline][_nnull]': True,
         'sort': '-datePublished',
