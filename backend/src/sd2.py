@@ -296,11 +296,19 @@ class DirectusManifestoScraper:
     def _delete_existing_copertine(self, edition_id: str):
         """Delete all existing copertine with the given editionId."""
         try:
+            # Add a small delay to ensure any previous operations are completed
+            import time
+            time.sleep(0.5)
+            
+            # Try multiple query approaches to ensure we find existing objects
             query_resp = self.collection.query.fetch_objects(
                 filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
                 limit=10,
             )
             existing_objects = query_resp.objects
+            
+            # Debug: Log the actual query being performed
+            self.logger.info(f"Querying for objects with editionId: '{edition_id}'")
             
             if existing_objects:
                 self.logger.info(f"Found {len(existing_objects)} existing objects with editionId {edition_id}")
@@ -315,11 +323,31 @@ class DirectusManifestoScraper:
                         self.logger.warning(f"Failed to delete object with UUID {obj.uuid}: {e}")
                 
                 self.logger.info(f"Successfully deleted {deleted_count}/{len(existing_objects)} objects")
+                
+                # Verify deletion worked
+                time.sleep(1)
+                verify_resp = self.collection.query.fetch_objects(
+                    filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
+                    limit=10,
+                )
+                if verify_resp.objects:
+                    self.logger.warning(f"After deletion, still found {len(verify_resp.objects)} objects with editionId {edition_id}")
+                else:
+                    self.logger.info(f"Verified: No objects remain with editionId {edition_id}")
             else:
                 self.logger.info(f"No existing objects found with editionId {edition_id}")
                 
+                # Debug: Let's also try a broader query to see what's actually in the collection
+                all_objects_resp = self.collection.query.fetch_objects(limit=5)
+                self.logger.info(f"Debug: Collection contains {len(all_objects_resp.objects)} total objects")
+                for obj in all_objects_resp.objects:
+                    obj_edition_id = obj.properties.get('editionId', 'N/A')
+                    self.logger.info(f"  Object UUID {obj.uuid} has editionId: '{obj_edition_id}'")
+                
         except Exception as e:
             self.logger.warning(f"Error querying for existing objects with editionId {edition_id}: {e}")
+            # Log the full exception for debugging
+            self.logger.exception("Full exception details:")
     
     def _download_and_save_image(self, article: dict[str, Any], date: datetime) -> str | None:
         """Download and save the article's featured image."""
