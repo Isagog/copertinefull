@@ -299,100 +299,90 @@ class DirectusManifestoScraper:
         return True
     
     def _delete_existing_copertine(self, edition_id: str):
-        """Delete all existing copertine with the given editionId."""
+        """Delete all existing copertine with the given editionId using GraphQL."""
         try:
-            # Add a small delay to ensure any previous operations are completed
             import time
             time.sleep(0.5)
             
-            # Debug: Log collection information
             collection_name = self._get_required_env("COP_COPERTINE_COLLNAME")
-            self.logger.info(f"Querying collection '{collection_name}' for objects with editionId: '{edition_id}'")
+            self.logger.info(f"Using GraphQL to query collection '{collection_name}' for objects with editionId: '{edition_id}'")
             
-            # Try multiple query approaches to ensure we find existing objects
-            query_resp = self.collection.query.fetch_objects(
-                filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
-                limit=10,
-            )
-            existing_objects = query_resp.objects
-            
-            if existing_objects:
-                self.logger.info(f"Found {len(existing_objects)} existing objects with editionId {edition_id}")
+            # Use GraphQL to find existing objects (since Python client sees different data)
+            try:
+                import httpx
+                graphql_query = {
+                    "query": f"query GetCopertineByEdition {{ Get {{ Copertine(where: {{path: [\"editionId\"], operator: Equal, valueText: \"{edition_id}\"}}) {{ testataName editionId _additional {{ id }} }} }} }}"
+                }
                 
-                deleted_count = 0
-                for obj in existing_objects:
-                    try:
-                        self.collection.data.delete_by_id(obj.uuid)
-                        deleted_count += 1
-                        self.logger.info(f"Deleted existing object with UUID {obj.uuid}")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to delete object with UUID {obj.uuid}: {e}")
-                
-                self.logger.info(f"Successfully deleted {deleted_count}/{len(existing_objects)} objects")
-                
-                # Verify deletion worked
-                time.sleep(1)
-                verify_resp = self.collection.query.fetch_objects(
-                    filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
-                    limit=10,
-                )
-                if verify_resp.objects:
-                    self.logger.warning(f"After deletion, still found {len(verify_resp.objects)} objects with editionId {edition_id}")
-                else:
-                    self.logger.info(f"Verified: No objects remain with editionId {edition_id}")
-            else:
-                self.logger.info(f"No existing objects found with editionId {edition_id}")
-                
-                # Debug: Let's also try a broader query to see what's actually in the collection
-                all_objects_resp = self.collection.query.fetch_objects(limit=20)
-                self.logger.info(f"Debug: Collection '{collection_name}' contains {len(all_objects_resp.objects)} total objects")
-                for obj in all_objects_resp.objects:
-                    obj_edition_id = obj.properties.get('editionId', 'N/A')
-                    self.logger.info(f"  Object UUID {obj.uuid} has editionId: '{obj_edition_id}'")
-                
-                # Try a different query approach - query without filters to see all objects
-                self.logger.info("Debug: Trying alternative query to find objects with target editionId...")
-                all_resp = self.collection.query.fetch_objects(limit=50)
-                matching_objects = [obj for obj in all_resp.objects if obj.properties.get('editionId') == edition_id]
-                if matching_objects:
-                    self.logger.warning(f"FOUND {len(matching_objects)} objects with editionId '{edition_id}' using alternative query!")
-                    for obj in matching_objects:
-                        self.logger.warning(f"  Alternative query found UUID {obj.uuid} with editionId: '{obj.properties.get('editionId')}'")
-                else:
-                    self.logger.info(f"Alternative query also found no objects with editionId '{edition_id}'")
-                
-                # Try GraphQL query like curl command to see if we get different results
-                self.logger.info("Debug: Trying GraphQL query like curl command...")
-                try:
-                    import httpx
-                    graphql_query = {
-                        "query": "query GetAllCopertine { Get { Copertine { testataName editionId editionDateIsoStr editionImageFnStr captionStr kickerStr _additional { id creationTimeUnix lastUpdateTimeUnix } } } }"
-                    }
-                    with httpx.Client(timeout=30.0) as client:
-                        response = client.post(
-                            "http://localhost:8090/v1/graphql",
-                            json=graphql_query,
-                            headers={"Content-Type": "application/json"}
-                        )
-                        if response.status_code == 200:
-                            graphql_data = response.json()
-                            copertine = graphql_data.get('data', {}).get('Get', {}).get('Copertine', [])
-                            self.logger.info(f"GraphQL query returned {len(copertine)} objects")
-                            target_objects = [obj for obj in copertine if obj.get('editionId') == edition_id]
-                            if target_objects:
-                                self.logger.warning(f"GraphQL query FOUND {len(target_objects)} objects with editionId '{edition_id}'!")
-                                for obj in target_objects:
-                                    self.logger.warning(f"  GraphQL found object ID {obj.get('_additional', {}).get('id')} with editionId: '{obj.get('editionId')}'")
-                            else:
-                                self.logger.info(f"GraphQL query also found no objects with editionId '{edition_id}'")
+                with httpx.Client(timeout=30.0) as client:
+                    response = client.post(
+                        "http://localhost:8090/v1/graphql",
+                        json=graphql_query,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    
+                    if response.status_code == 200:
+                        graphql_data = response.json()
+                        existing_objects = graphql_data.get('data', {}).get('Get', {}).get('Copertine', [])
+                        
+                        if existing_objects:
+                            self.logger.info(f"GraphQL found {len(existing_objects)} existing objects with editionId {edition_id}")
+                            
+                            # Delete each object using GraphQL mutations
+                            deleted_count = 0
+                            for obj in existing_objects:
+                                obj_id = obj.get('_additional', {}).get('id')
+                                if obj_id:
+                                    try:
+                                        delete_mutation = {
+                                            "query": f"mutation {{ Delete(class: \"Copertine\", id: \"{obj_id}\") {{ successful error {{ message }} }} }}"
+                                        }
+                                        delete_response = client.post(
+                                            "http://localhost:8090/v1/graphql",
+                                            json=delete_mutation,
+                                            headers={"Content-Type": "application/json"}
+                                        )
+                                        
+                                        if delete_response.status_code == 200:
+                                            delete_data = delete_response.json()
+                                            if delete_data.get('data', {}).get('Delete', {}).get('successful'):
+                                                deleted_count += 1
+                                                self.logger.info(f"Deleted existing object with ID {obj_id}")
+                                            else:
+                                                error_msg = delete_data.get('data', {}).get('Delete', {}).get('error', {}).get('message', 'Unknown error')
+                                                self.logger.warning(f"Failed to delete object with ID {obj_id}: {error_msg}")
+                                        else:
+                                            self.logger.warning(f"Delete mutation failed with status {delete_response.status_code}")
+                                    except Exception as e:
+                                        self.logger.warning(f"Failed to delete object with ID {obj_id}: {e}")
+                            
+                            self.logger.info(f"Successfully deleted {deleted_count}/{len(existing_objects)} objects using GraphQL")
+                            
+                            # Verify deletion worked using GraphQL
+                            time.sleep(1)
+                            verify_response = client.post(
+                                "http://localhost:8090/v1/graphql",
+                                json=graphql_query,
+                                headers={"Content-Type": "application/json"}
+                            )
+                            
+                            if verify_response.status_code == 200:
+                                verify_data = verify_response.json()
+                                remaining_objects = verify_data.get('data', {}).get('Get', {}).get('Copertine', [])
+                                if remaining_objects:
+                                    self.logger.warning(f"After deletion, still found {len(remaining_objects)} objects with editionId {edition_id}")
+                                else:
+                                    self.logger.info(f"Verified: No objects remain with editionId {edition_id}")
                         else:
-                            self.logger.warning(f"GraphQL query failed with status {response.status_code}")
-                except Exception as e:
-                    self.logger.warning(f"GraphQL query failed: {e}")
+                            self.logger.info(f"GraphQL found no existing objects with editionId {edition_id}")
+                    else:
+                        self.logger.warning(f"GraphQL query failed with status {response.status_code}")
+                        
+            except Exception as e:
+                self.logger.warning(f"GraphQL query/delete failed: {e}")
                 
         except Exception as e:
-            self.logger.warning(f"Error querying for existing objects with editionId {edition_id}: {e}")
-            # Log the full exception for debugging
+            self.logger.warning(f"Error in GraphQL delete operation: {e}")
             self.logger.exception("Full exception details:")
     
     def _download_and_save_image(self, article: dict[str, Any], date: datetime) -> str | None:
