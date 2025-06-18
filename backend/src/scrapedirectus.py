@@ -5,10 +5,14 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID
+
+# Add the project root to the Python path
+sys.path.append(str(Path(__file__).parent.parent))
 
 import httpx
 import weaviate
@@ -16,7 +20,7 @@ from dotenv import load_dotenv
 from weaviate.classes.query import Filter
 from weaviate.util import generate_uuid5
 
-from .includes.weschema import COPERTINE_COLL_CONFIG
+from includes.weschema import COPERTINE_COLL_CONFIG
 
 
 class MissingEnvironmentVariableError(ValueError):
@@ -59,6 +63,8 @@ logging.basicConfig(
     ],
 )
 logging.getLogger("weaviate").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -266,23 +272,34 @@ class DirectusManifestoScraper:
             logger.info(f"Retrieved {len(articles)} articles from Directus.")
 
             for article in articles:
+                article_id = article.get("id", "N/A")
+                
+                # Validate required fields
+                required_fields = ["referenceHeadline", "articleFeaturedImage"]
+                missing_required = [field for field in required_fields if not article.get(field)]
+                if missing_required:
+                    logger.error(f"Skipping article {article_id} due to missing required properties: {', '.join(missing_required)}")
+                    continue
+
+                # Warn on missing optional fields
+                optional_fields = ["articleKicker"]
+                missing_optional = [field for field in optional_fields if not article.get(field)]
+                if missing_optional:
+                    logger.warning(f"Processing article {article_id} with missing optional properties: {', '.join(missing_optional)}")
+
                 date_published = datetime.fromisoformat(article['datePublished'])
                 edition_id = date_published.strftime("%d-%m-%Y")
 
                 if edition_id in processed_edition_ids:
-                    logger.info(f"Already processed edition {edition_id}, skipping article {article['id']}.")
+                    logger.info(f"Already processed edition {edition_id}, skipping article {article_id}.")
                     continue
                 
                 processed_edition_ids.add(edition_id)
 
                 image_id = article.get('articleFeaturedImage')
-                if not image_id:
-                    logger.warning(f"Article {article['id']} has no featured image. Skipping.")
-                    continue
-
                 image_url = self.get_asset_url(image_id)
                 if not image_url:
-                    logger.warning(f"Could not get asset URL for image {image_id}. Skipping article {article['id']}.")
+                    logger.warning(f"Could not get asset URL for image {image_id}. Skipping article {article_id}.")
                     continue
 
                 date_str = date_published.strftime("%Y-%m-%d")
@@ -293,9 +310,9 @@ class DirectusManifestoScraper:
                     if final_image_filename:
                         self.store_in_weaviate(article, final_image_filename)
                     else:
-                        logger.error(f"Failed to download image for article {article['id']}. Skipping.")
+                        logger.error(f"Failed to download image for article {article_id}. Skipping.")
                 else:
-                    logger.error(f"Failed to generate image filename for article {article['id']}. Skipping.")
+                    logger.error(f"Failed to generate image filename for article {article_id}. Skipping.")
         finally:
             client.close()
 
@@ -356,8 +373,8 @@ def build_directus_params(start_date, end_date):
         'fields': 'id,articleEdition,referenceHeadline,articleTag,articleKicker,datePublished,author,headline,articleEditionPosition,articleFeaturedImageDescription,articleFeaturedImage',
         'filter[syncSource][_eq]': 'wp',
         'filter[articleEditionPosition][_eq]': 1,
-        'filter[articleFeaturedImage][_nnull]': True,
-        'filter[referenceHeadline][_nnull]': True,
+        # 'filter[articleFeaturedImage][_nnull]': True,
+        # 'filter[referenceHeadline][_nnull]': True,
         'sort': '-datePublished',
         'limit': -1 # Fetch all matching
     }
