@@ -236,12 +236,24 @@ class DirectusManifestoScraper:
                 "captionStr": article.get("referenceHeadline"),
                 "kickerStr": article.get("articleKicker"),
             }
-            self.collection.data.replace(properties=data, uuid=uuid)
-            logger.info(
-                "    Successfully stored data in Weaviate for date %s with UUID %s",
-                edition_id,
-                uuid,
-            )
+
+            try:
+                self.collection.data.insert(properties=data, uuid=uuid)
+                logger.info(
+                    "    Successfully stored data in Weaviate for date %s with UUID %s",
+                    edition_id,
+                    uuid,
+                )
+            except weaviate.exceptions.UnexpectedStatusCodeError as e:
+                if "already exists" in str(e):
+                    self.collection.data.replace(properties=data, uuid=uuid)
+                    logger.info(
+                        "    Successfully updated data in Weaviate for date %s with UUID %s",
+                        edition_id,
+                        uuid,
+                    )
+                else:
+                    raise
         except Exception:
             logger.exception(
                 "    Failed to store data in Weaviate for article %s", article.get("id")
