@@ -361,6 +361,35 @@ class DirectusManifestoScraper:
                 else:
                     self.logger.info(f"Alternative query also found no objects with editionId '{edition_id}'")
                 
+                # Try GraphQL query like curl command to see if we get different results
+                self.logger.info("Debug: Trying GraphQL query like curl command...")
+                try:
+                    import httpx
+                    graphql_query = {
+                        "query": "query GetAllCopertine { Get { Copertine { testataName editionId editionDateIsoStr editionImageFnStr captionStr kickerStr _additional { id creationTimeUnix lastUpdateTimeUnix } } } }"
+                    }
+                    with httpx.Client(timeout=30.0) as client:
+                        response = client.post(
+                            "http://localhost:8090/v1/graphql",
+                            json=graphql_query,
+                            headers={"Content-Type": "application/json"}
+                        )
+                        if response.status_code == 200:
+                            graphql_data = response.json()
+                            copertine = graphql_data.get('data', {}).get('Get', {}).get('Copertine', [])
+                            self.logger.info(f"GraphQL query returned {len(copertine)} objects")
+                            target_objects = [obj for obj in copertine if obj.get('editionId') == edition_id]
+                            if target_objects:
+                                self.logger.warning(f"GraphQL query FOUND {len(target_objects)} objects with editionId '{edition_id}'!")
+                                for obj in target_objects:
+                                    self.logger.warning(f"  GraphQL found object ID {obj.get('_additional', {}).get('id')} with editionId: '{obj.get('editionId')}'")
+                            else:
+                                self.logger.info(f"GraphQL query also found no objects with editionId '{edition_id}'")
+                        else:
+                            self.logger.warning(f"GraphQL query failed with status {response.status_code}")
+                except Exception as e:
+                    self.logger.warning(f"GraphQL query failed: {e}")
+                
         except Exception as e:
             self.logger.warning(f"Error querying for existing objects with editionId {edition_id}: {e}")
             # Log the full exception for debugging
