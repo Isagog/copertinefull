@@ -308,8 +308,6 @@ class DirectusManifestoScraper:
             bool: True if deletion was successful or no objects existed, False if deletion failed
         """
         try:
-            import time
-            
             # Check if any objects exist
             existing_objects = self.collection.query.fetch_objects(
                 filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
@@ -328,7 +326,6 @@ class DirectusManifestoScraper:
             for uuid in uuids_to_delete:
                 try:
                     self.collection.data.delete_by_id(uuid)
-                    time.sleep(0.1)  # Small delay for stability
                 except Exception as e:
                     self.logger.error(f"Failed to delete object with UUID {uuid}: {e}")
                     failed_deletions.append(uuid)
@@ -340,8 +337,7 @@ class DirectusManifestoScraper:
             # Log successful deletion
             self.logger.info(f"Successfully deleted {len(uuids_to_delete)} objects with editionId {edition_id}")
             
-            # Brief wait and verification
-            time.sleep(1)
+            # Verification
             verify_objects = self.collection.query.fetch_objects(
                 filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
                 limit=10
