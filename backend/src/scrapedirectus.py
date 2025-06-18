@@ -228,20 +228,6 @@ class DirectusManifestoScraper:
             namespace_uuid = UUID("c1e7c19c-2c4c-5c9c-9c9c-c1e7c19c2c4c")
             uuid = generate_uuid5(edition_id, namespace_uuid)
 
-            # Check if an object with the same editionId already exists and delete it
-            # This ensures that we are overwriting the existing object
-            response = self.collection.query.fetch_objects(
-                filters=Filter.by_property("editionId").equal(edition_id)
-            )
-            if response.objects:
-                for obj in response.objects:
-                    self.collection.data.delete_by_id(obj.uuid)
-                    logger.info(
-                        "    Deleted existing object with editionId %s and UUID %s",
-                        edition_id,
-                        obj.uuid,
-                    )
-
             data = {
                 "testataName": "Il Manifesto",
                 "editionId": edition_id,
@@ -250,7 +236,7 @@ class DirectusManifestoScraper:
                 "captionStr": article.get("referenceHeadline"),
                 "kickerStr": article.get("articleKicker"),
             }
-            self.collection.data.insert(properties=data, uuid=uuid)
+            self.collection.data.replace(properties=data, uuid=uuid)
             logger.info(
                 "    Successfully stored data in Weaviate for date %s with UUID %s",
                 edition_id,
