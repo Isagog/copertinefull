@@ -271,7 +271,10 @@ class DirectusManifestoScraper:
         edition_id = date.strftime("%d-%m-%Y")
         
         # Delete existing copertine with the same editionId
-        self._delete_existing_copertine(edition_id)
+        deletion_successful = self._delete_existing_copertine(edition_id)
+        if not deletion_successful:
+            self.logger.error(f"Failed to delete existing objects with editionId {edition_id}. Aborting insertion to prevent duplicates.")
+            return
         
         # Download image and store in Weaviate
         image_filename = self._download_and_save_image(article, date)
@@ -298,8 +301,12 @@ class DirectusManifestoScraper:
         
         return True
     
-    def _delete_existing_copertine(self, edition_id: str):
-        """Delete all existing copertine with the given editionId using GraphQL."""
+    def _delete_existing_copertine(self, edition_id: str) -> bool:
+        """Delete all existing copertine with the given editionId using GraphQL.
+        
+        Returns:
+            bool: True if deletion was successful or no objects existed, False if deletion failed
+        """
         try:
             import time
             time.sleep(0.5)
@@ -321,69 +328,101 @@ class DirectusManifestoScraper:
                         headers={"Content-Type": "application/json"}
                     )
                     
-                    if response.status_code == 200:
-                        graphql_data = response.json()
-                        existing_objects = graphql_data.get('data', {}).get('Get', {}).get('Copertine', [])
-                        
-                        if existing_objects:
-                            self.logger.info(f"GraphQL found {len(existing_objects)} existing objects with editionId {edition_id}")
+                    if response.status_code != 200:
+                        self.logger.error(f"GraphQL query failed with status {response.status_code}")
+                        return False
+                    
+                    graphql_data = response.json()
+                    existing_objects = graphql_data.get('data', {}).get('Get', {}).get('Copertine', [])
+                    
+                    if not existing_objects:
+                        self.logger.info(f"GraphQL found no existing objects with editionId {edition_id}")
+                        return True
+                    
+                    self.logger.info(f"GraphQL found {len(existing_objects)} existing objects with editionId {edition_id}")
+                    
+                    # Delete each object using GraphQL mutations
+                    deleted_count = 0
+                    failed_deletions = []
+                    
+                    for obj in existing_objects:
+                        obj_id = obj.get('_additional', {}).get('id')
+                        if not obj_id:
+                            self.logger.warning("Found object without ID, skipping")
+                            continue
                             
-                            # Delete each object using GraphQL mutations
-                            deleted_count = 0
-                            for obj in existing_objects:
-                                obj_id = obj.get('_additional', {}).get('id')
-                                if obj_id:
-                                    try:
-                                        delete_mutation = {
-                                            "query": f"mutation {{ Delete(class: \"Copertine\", id: \"{obj_id}\") {{ successful error {{ message }} }} }}"
-                                        }
-                                        delete_response = client.post(
-                                            "http://localhost:8090/v1/graphql",
-                                            json=delete_mutation,
-                                            headers={"Content-Type": "application/json"}
-                                        )
-                                        
-                                        if delete_response.status_code == 200:
-                                            delete_data = delete_response.json()
-                                            if delete_data.get('data', {}).get('Delete', {}).get('successful'):
-                                                deleted_count += 1
-                                                self.logger.info(f"Deleted existing object with ID {obj_id}")
-                                            else:
-                                                error_msg = delete_data.get('data', {}).get('Delete', {}).get('error', {}).get('message', 'Unknown error')
-                                                self.logger.warning(f"Failed to delete object with ID {obj_id}: {error_msg}")
-                                        else:
-                                            self.logger.warning(f"Delete mutation failed with status {delete_response.status_code}")
-                                    except Exception as e:
-                                        self.logger.warning(f"Failed to delete object with ID {obj_id}: {e}")
-                            
-                            self.logger.info(f"Successfully deleted {deleted_count}/{len(existing_objects)} objects using GraphQL")
-                            
-                            # Verify deletion worked using GraphQL
-                            time.sleep(1)
-                            verify_response = client.post(
+                        try:
+                            delete_mutation = {
+                                "query": f"mutation {{ Delete(class: \"Copertine\", id: \"{obj_id}\") {{ successful error {{ message }} }} }}"
+                            }
+                            delete_response = client.post(
                                 "http://localhost:8090/v1/graphql",
-                                json=graphql_query,
+                                json=delete_mutation,
                                 headers={"Content-Type": "application/json"}
                             )
                             
-                            if verify_response.status_code == 200:
-                                verify_data = verify_response.json()
-                                remaining_objects = verify_data.get('data', {}).get('Get', {}).get('Copertine', [])
-                                if remaining_objects:
-                                    self.logger.warning(f"After deletion, still found {len(remaining_objects)} objects with editionId {edition_id}")
+                            if delete_response.status_code == 200:
+                                delete_data = delete_response.json()
+                                if delete_data.get('data', {}).get('Delete', {}).get('successful'):
+                                    deleted_count += 1
+                                    self.logger.info(f"Successfully deleted object with ID {obj_id}")
                                 else:
-                                    self.logger.info(f"Verified: No objects remain with editionId {edition_id}")
+                                    error_msg = delete_data.get('data', {}).get('Delete', {}).get('error', {}).get('message', 'Unknown error')
+                                    self.logger.error(f"Failed to delete object with ID {obj_id}: {error_msg}")
+                                    failed_deletions.append(obj_id)
+                            else:
+                                self.logger.error(f"Delete mutation failed with status {delete_response.status_code}")
+                                failed_deletions.append(obj_id)
+                                
+                        except Exception as e:
+                            self.logger.error(f"Exception while deleting object with ID {obj_id}: {e}")
+                            failed_deletions.append(obj_id)
+                    
+                    self.logger.info(f"Deletion summary: {deleted_count}/{len(existing_objects)} objects deleted")
+                    
+                    if failed_deletions:
+                        self.logger.error(f"Failed to delete {len(failed_deletions)} objects: {failed_deletions}")
+                        return False
+                    
+                    # Wait longer for Weaviate to process deletions
+                    time.sleep(2)
+                    
+                    # Verify deletion worked using GraphQL with retry logic
+                    max_retries = 3
+                    for retry in range(max_retries):
+                        verify_response = client.post(
+                            "http://localhost:8090/v1/graphql",
+                            json=graphql_query,
+                            headers={"Content-Type": "application/json"}
+                        )
+                        
+                        if verify_response.status_code == 200:
+                            verify_data = verify_response.json()
+                            remaining_objects = verify_data.get('data', {}).get('Get', {}).get('Copertine', [])
+                            
+                            if not remaining_objects:
+                                self.logger.info(f"Verified: No objects remain with editionId {edition_id}")
+                                return True
+                            else:
+                                self.logger.warning(f"Verification attempt {retry + 1}: Still found {len(remaining_objects)} objects with editionId {edition_id}")
+                                if retry < max_retries - 1:
+                                    time.sleep(1)  # Wait before retry
                         else:
-                            self.logger.info(f"GraphQL found no existing objects with editionId {edition_id}")
-                    else:
-                        self.logger.warning(f"GraphQL query failed with status {response.status_code}")
+                            self.logger.warning(f"Verification query failed with status {verify_response.status_code}")
+                    
+                    # If we get here, verification failed after all retries
+                    self.logger.error(f"After {max_retries} verification attempts, objects still exist with editionId {edition_id}")
+                    return False
                         
             except Exception as e:
-                self.logger.warning(f"GraphQL query/delete failed: {e}")
+                self.logger.error(f"GraphQL query/delete failed: {e}")
+                self.logger.exception("Full exception details:")
+                return False
                 
         except Exception as e:
-            self.logger.warning(f"Error in GraphQL delete operation: {e}")
+            self.logger.error(f"Error in GraphQL delete operation: {e}")
             self.logger.exception("Full exception details:")
+            return False
     
     def _download_and_save_image(self, article: dict[str, Any], date: datetime) -> str | None:
         """Download and save the article's featured image."""
