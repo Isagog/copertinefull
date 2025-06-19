@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import weaviate
+from weaviate.classes.init import Auth
 from dotenv import load_dotenv
 
 # Configure logging
@@ -12,6 +13,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
 
 class WeaviateURLError(ValueError):
     """Custom exception for missing Weaviate URL."""
@@ -23,34 +25,62 @@ class WeaviateURLError(ValueError):
 
 def init_weaviate_client():
     """Initializes and returns a Weaviate client."""
-    secrets_path = Path(__file__).parent.parent / '.secrets'
+    secrets_path = Path(__file__).parent.parent / ".secrets"
     load_dotenv(dotenv_path=secrets_path)
-    
+
     weaviate_url = os.getenv("COP_WEAVIATE_URL", "")
     weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY", "")
+    weaviate_grpc_port = os.getenv("COP_WEAVIATE_GRPC_PORT", "50051")
 
     if not weaviate_url:
         raise WeaviateURLError()
 
-    if weaviate_url in ["localhost", "127.0.0.1"]:
-        return weaviate.connect_to_local()
-    
-    return weaviate.connect_to_wcs(
-        cluster_url=weaviate_url,
-        auth_credentials=weaviate.auth.AuthApiKey(weaviate_api_key),
-    )
+    # This is a local connection - extract host and port
+    if "://" in weaviate_url:
+        # Parse full URL like http://weaviate2025:8090 or http://localhost:8080
+        protocol, rest = weaviate_url.split("://", 1)
+        if ":" in rest:
+            host, port_str = rest.split(":", 1)
+            port = int(port_str)
+        else:
+            host = rest
+            port = 8080
+    else:
+        # Just hostname like "localhost" or "weaviate2025"
+        host = weaviate_url
+        port = 8080
+
+    # Convert grpc_port to int
+    grpc_port = int(weaviate_grpc_port)
+
+    # Handle API key authentication for local connections
+    if weaviate_api_key and weaviate_api_key.strip():
+        return weaviate.connect_to_local(
+            host=host,
+            port=port,
+            grpc_port=grpc_port,
+            auth_credentials=Auth.api_key(weaviate_api_key),
+        )
+    else:
+        return weaviate.connect_to_local(
+            host=host,
+            port=port,
+            grpc_port=grpc_port,
+        )
+
 
 def get_all_dates_from_weaviate(client, collection_name):
     """Fetches all edition dates from the specified Weaviate collection."""
     try:
         collection = client.collections.get(collection_name)
-        
+
         response = collection.query.fetch_objects(
-            limit=10000, # Adjust limit as needed
-            return_properties=["editionId"]
+            limit=10000, return_properties=["editionId"]  # Adjust limit as needed
         )
     except Exception:
-        logger.exception(f"Failed to fetch dates from Weaviate collection '{collection_name}'")
+        logger.exception(
+            f"Failed to fetch dates from Weaviate collection '{collection_name}'"
+        )
         return set()
     else:
         dates = set()
@@ -59,8 +89,11 @@ def get_all_dates_from_weaviate(client, collection_name):
                 date_str = obj.properties["editionId"]
                 dates.add(datetime.strptime(date_str, "%d-%m-%Y").date())
             except (ValueError, KeyError) as e:
-                logger.warning(f"Skipping invalid date format or missing 'editionId': {obj.properties}. Error: {e}")
+                logger.warning(
+                    f"Skipping invalid date format or missing 'editionId': {obj.properties}. Error: {e}"
+                )
         return dates
+
 
 def find_missing_dates(existing_dates, ignored_dates_str):
     """
@@ -73,15 +106,17 @@ def find_missing_dates(existing_dates, ignored_dates_str):
 
     oldest_date = min(existing_dates)
     today = datetime.now().date()
-    
+
     # Parse ignored dates from DD/MM format to (day, month) tuples
     ignored_dates = set()
     for date_str in ignored_dates_str:
         try:
-            day, month = map(int, date_str.split('/'))
+            day, month = map(int, date_str.split("/"))
             ignored_dates.add((day, month))
         except ValueError:
-            logger.warning(f"Invalid format for ignored date '{date_str}'. Should be DD/MM.")
+            logger.warning(
+                f"Invalid format for ignored date '{date_str}'. Should be DD/MM."
+            )
 
     missing_dates = []
     current_date = oldest_date
@@ -92,8 +127,9 @@ def find_missing_dates(existing_dates, ignored_dates_str):
                 if current_date not in existing_dates:
                     missing_dates.append(current_date)
         current_date += timedelta(days=1)
-        
+
     return missing_dates
+
 
 def main():
     """
@@ -102,34 +138,39 @@ def main():
     try:
         client = init_weaviate_client()
         collection_name = os.getenv("COP_COPERTINE_COLLNAME", "Copertine")
-        
+
         # List of dates to ignore in DD/MM format
         # Can be extended as needed
         ignored_holidays = ["16/08", "01/01", "02/05", "25/12", "26/12"]
-        
+
         logger.info(f"Fetching existing dates from '{collection_name}' collection...")
         existing_dates = get_all_dates_from_weaviate(client, collection_name)
-        
+
         if existing_dates:
             logger.info(f"Found {len(existing_dates)} existing dates.")
-            logger.info(f"Oldest date in collection: {min(existing_dates).strftime('%d-%m-%Y')}")
-            
+            logger.info(
+                f"Oldest date in collection: {min(existing_dates).strftime('%d-%m-%Y')}"
+            )
+
             missing_dates = find_missing_dates(existing_dates, ignored_holidays)
-            
+
             if missing_dates:
-                logger.warning(f"Found {len(missing_dates)} missing dates (excluding Mondays and holidays):")
+                logger.warning(
+                    f"Found {len(missing_dates)} missing dates (excluding Mondays and holidays):"
+                )
                 for date in sorted(missing_dates):
                     print(date.strftime("%Y-%m-%d"))
             else:
                 logger.info("No missing dates found. The collection is up-to-date.")
         else:
             logger.error("Could not retrieve any dates from Weaviate.")
-            
+
     except Exception:
         logger.exception("An error occurred")
     finally:
-        if 'client' in locals() and client.is_connected():
+        if "client" in locals() and client.is_connected():
             client.close()
+
 
 if __name__ == "__main__":
     main()

@@ -28,16 +28,47 @@ def init_weaviate_client() -> weaviate.WeaviateClient:
     """Initialize Weaviate client with error handling."""
     load_dotenv()
     try:
-        if os.getenv("COP_WEAVIATE_URL") == "localhost":
-            client = weaviate.connect_to_local()
+        weaviate_url = os.getenv("COP_WEAVIATE_URL", "")
+        
+        # Determine if this is a local connection (not a WCS URL)
+        # WCS URLs typically start with https:// and contain weaviate cloud domains
+        is_wcs = weaviate_url.startswith("https://") and (".weaviate." in weaviate_url or "weaviate.io" in weaviate_url)
+        
+        if not is_wcs:
+            # This is a local connection
+            if weaviate_url == "localhost":
+                # Simple localhost case
+                client = weaviate.connect_to_local()
+            else:
+                # Parse URL to extract host and port for local connections
+                if "://" in weaviate_url:
+                    # Parse full URL like http://weaviate2025:8090 or http://localhost:8080
+                    protocol, rest = weaviate_url.split("://", 1)
+                    if ":" in rest:
+                        host, port_str = rest.split(":", 1)
+                        port = int(port_str)
+                    else:
+                        host = rest
+                        port = 8080
+                else:
+                    # Just hostname like "weaviate2025"
+                    host = weaviate_url
+                    port = 8080
+                
+                client = weaviate.connect_to_custom(
+                    http_host=host,
+                    http_port=port,
+                    http_secure=False,
+                    grpc_host=host,
+                    grpc_port=50051,
+                    grpc_secure=False,
+                )
         else:
-            client = weaviate.connect_to_custom(
-                http_host=os.getenv("COP_WEAVIATE_URL"),
-                http_port=8080,
-                http_secure=False,
-                grpc_host=os.getenv("COP_WEAVIATE_URL"),
-                grpc_port=50051,
-                grpc_secure=False,
+            # For remote WCS connections
+            weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY", "")
+            client = weaviate.connect_to_wcs(
+                cluster_url=weaviate_url,
+                auth_credentials=weaviate.auth.AuthApiKey(weaviate_api_key),
             )
     except Exception as e:
         error_message = "Failed to initialize Weaviate client"
