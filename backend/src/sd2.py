@@ -1,4 +1,4 @@
-# Scrape Directus 2
+""" Scrape Directus 2 """
 import argparse
 import logging
 import mimetypes
@@ -8,13 +8,12 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import requests
 import weaviate
 import weaviate.classes as wvc
-from weaviate.classes.init import Auth
 from dotenv import load_dotenv
+from weaviate.classes.init import Auth
 
 # Add the project root to the Python path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -99,6 +98,11 @@ class DirectusManifestoScraper:
         return value
 
     
+    def _validate_weaviate_url(self, weaviate_url: str) -> None:
+        """Validate Weaviate URL and raise error if missing."""
+        if not weaviate_url:
+            raise WeaviateURLError()
+
     def _init_weaviate(self):
         """Initialize Weaviate client and collection."""
         try:
@@ -109,8 +113,7 @@ class DirectusManifestoScraper:
             weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY", "")
             weaviate_grpc_port = os.getenv("COP_WEAVIATE_GRPC_PORT", "50051")
 
-            if not weaviate_url:
-                raise WeaviateURLError()
+            self._validate_weaviate_url(weaviate_url)
 
             # This is a local connection - extract host and port
             if "://" in weaviate_url:
@@ -148,12 +151,12 @@ class DirectusManifestoScraper:
             # Ensure collection exists only after successful connection
             self._ensure_collection()
             
-            # Return the client to the caller
-            return self.weaviate_client
-            
         except Exception:
             self.logger.exception("Failed to initialize Weaviate client")
             raise
+        else:
+            # Return the client to the caller
+            return self.weaviate_client
     
     def _ensure_collection(self):
         """Ensure the Copertine collection exists in Weaviate."""
@@ -289,11 +292,11 @@ class DirectusManifestoScraper:
             articles = response.json().get('data', [])
             if articles:
                 return articles[0]  # Return the first (and should be only) article
-            return None
                 
         except requests.RequestException:
             self.logger.exception(f"Error fetching copertina for {date.strftime('%Y-%m-%d')}")
-            return None
+        
+        return None
     
     def _process_copertina(self, article: dict[str, Any], date: datetime):
         """Process a single copertina article."""
@@ -360,8 +363,8 @@ class DirectusManifestoScraper:
             for uuid in uuids_to_delete:
                 try:
                     self.collection.data.delete_by_id(uuid)
-                except Exception as e:
-                    self.logger.error(f"Failed to delete object with UUID {uuid}: {e}")
+                except Exception:
+                    self.logger.exception(f"Failed to delete object with UUID {uuid}")
                     failed_deletions.append(uuid)
             
             if failed_deletions:
@@ -380,12 +383,12 @@ class DirectusManifestoScraper:
             if verify_objects.objects:
                 self.logger.error(f"Deletion verification failed: Still found {len(verify_objects.objects)} objects with editionId {edition_id}")
                 return False
-            
-            return True
                 
-        except Exception as e:
-            self.logger.error(f"Error in deletion operation: {e}")
+        except Exception:
+            self.logger.exception("Error in deletion operation.")
             return False
+        else:
+            return True
     
     def _download_and_save_image(self, article: dict[str, Any], date: datetime) -> str | None:
         """Download and save the article's featured image."""
@@ -474,12 +477,12 @@ class DirectusManifestoScraper:
             # Save the image
             file_path.write_bytes(response.content)
             self.logger.info(f"Image saved to {file_path}. Size: {len(response.content)} bytes")
-            
-            return filename_with_ext
                 
         except Exception:
             self.logger.exception(f"Error downloading image {image_url}")
             return None
+        else:
+            return filename_with_ext
     
     def _store_in_weaviate(self, article: dict[str, Any], date: datetime, image_filename: str):
         """Store the copertina data in Weaviate."""
