@@ -25,7 +25,7 @@ from weaviate.classes.init import Auth
 # Add the project root to the Python path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from includes.weschema import COPERTINE_COLL_CONFIG
+from src.includes.weschema import COPERTINE_COLL_CONFIG
 
 
 class WeaviateMigrationError(Exception):
@@ -152,9 +152,12 @@ class WeaviateMigrator:
             "captionStr", "kickerStr", "captionAIStr", "imageAIDeStr", "modelAIName"
         ]
         
+        # Access properties as dictionary
+        obj_props = obj.properties if hasattr(obj, 'properties') else {}
+        
         for prop in expected_properties:
-            if hasattr(obj.properties, prop):
-                value = getattr(obj.properties, prop)
+            if prop in obj_props:
+                value = obj_props[prop]
                 if value is not None:
                     properties[prop] = value
         

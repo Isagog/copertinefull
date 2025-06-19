@@ -27,6 +27,10 @@ cd backend
 poetry run python experiments/travasa.py
 ```
 
+**Note**: Make sure both Weaviate instances are running before executing the script:
+- Old Weaviate should be accessible at `localhost:8080`
+- New Weaviate should be accessible at `localhost:8090`
+
 ## Features
 
 - **Duplicate Prevention**: Checks if objects already exist in the new collection based on `editionId`
