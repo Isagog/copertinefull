@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import requests
 import weaviate
 import weaviate.classes as wvc
+from weaviate.classes.init import Auth
 from dotenv import load_dotenv
 
 # Add the project root to the Python path
@@ -52,6 +53,12 @@ class DateFileNotFoundError(ScraperError):
         self.file_path = file_path
         super().__init__(f"Date file not found: {file_path}")
 
+    
+class WeaviateURLError(ValueError):
+    """Custom exception for missing Weaviate URL."""
+    def __init__(self, message="COP_WEAVIATE_URL environment variable not set."):
+        self.message = message
+        super().__init__(self.message)
 
 class DirectusManifestoScraper:
     """Scraper for Il Manifesto copertina articles from Directus CMS."""
@@ -90,32 +97,59 @@ class DirectusManifestoScraper:
         if value is None:
             raise MissingEnvironmentVariableError(var_name)
         return value
+
     
     def _init_weaviate(self):
         """Initialize Weaviate client and collection."""
         try:
-            weaviate_url = self._get_required_env("COP_WEAVIATE_URL")
-            weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY")
-            
-            if "localhost" in weaviate_url or "127.0.0.1" in weaviate_url or weaviate_url.startswith("http://"):
-                parsed_url = urlparse(weaviate_url)
-                http_port = parsed_url.port
-                
-                # Get gRPC port from environment variable
-                grpc_port = int(self._get_required_env("COP_WEAVIATE_GRPC_PORT"))
-                
+            secrets_path = Path(__file__).parent.parent / ".secrets"
+            load_dotenv(dotenv_path=secrets_path)
+
+            weaviate_url = os.getenv("COP_WEAVIATE_URL", "")
+            weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY", "")
+            weaviate_grpc_port = os.getenv("COP_WEAVIATE_GRPC_PORT", "50051")
+
+            if not weaviate_url:
+                raise WeaviateURLError()
+
+            # This is a local connection - extract host and port
+            if "://" in weaviate_url:
+                # Parse full URL like http://weaviate2025:8090 or http://localhost:8080
+                protocol, rest = weaviate_url.split("://", 1)
+                if ":" in rest:
+                    host, port_str = rest.split(":", 1)
+                    port = int(port_str)
+                else:
+                    host = rest
+                    port = 8080
+            else:
+                # Just hostname like "localhost" or "weaviate2025"
+                host = weaviate_url
+                port = 8080
+
+            # Convert grpc_port to int
+            grpc_port = int(weaviate_grpc_port)
+
+            # Handle API key authentication for local connections
+            if weaviate_api_key and weaviate_api_key.strip():
                 self.weaviate_client = weaviate.connect_to_local(
-                    host=parsed_url.hostname,
-                    port=http_port,
+                    host=host,
+                    port=port,
                     grpc_port=grpc_port,
+                    auth_credentials=Auth.api_key(weaviate_api_key),
                 )
             else:
-                self.weaviate_client = weaviate.connect_to_wcs(
-                    cluster_url=weaviate_url,
-                    auth_credentials=weaviate.auth.AuthApiKey(weaviate_api_key),
+                self.weaviate_client = weaviate.connect_to_local(
+                    host=host,
+                    port=port,
+                    grpc_port=grpc_port,
                 )
             
+            # Ensure collection exists only after successful connection
             self._ensure_collection()
+            
+            # Return the client to the caller
+            return self.weaviate_client
             
         except Exception:
             self.logger.exception("Failed to initialize Weaviate client")
