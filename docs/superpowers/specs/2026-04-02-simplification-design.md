@@ -301,11 +301,11 @@ Removed: `copback` service, `copertine-internal` network, `depends_on`.
 | File | Changes |
 |------|---------|
 | `backend/src/sd2.py` | Weaviate → psycopg2 |
-| `backend/pyproject.toml` | Remove weaviate/openai/together, add psycopg2-binary |
+| `backend/pyproject.toml` | Remove weaviate-client/openai/together/fastapi/uvicorn, add psycopg2-binary |
 | `backend/.secrets` | Add DATABASE_URL, remove Weaviate vars |
 | `frontend/app/api/copertine/route.ts` | Weaviate GraphQL → pg queries, add ?q= search |
 | `frontend/app/components/searchsection/SearchSection.tsx` | CustomEvent → callback props |
-| `frontend/app/copertine/page.tsx` | Own search state, remove CustomEvent listeners |
+| `frontend/app/copertine/page.tsx` | Own search state, remove CustomEvent listeners, update Weaviate error messages to generic DB errors |
 | `frontend/app/components/copertina/CopertinaCard.tsx` | Remove Weaviate error text, replace `imagePathCache` import with direct path construction |
 | `frontend/app/types/search.ts` | Simplify types |
 | `frontend/app/lib/config/constants.ts` | Remove FASTAPI/WEAVIATE/CACHE constants |
@@ -333,6 +333,6 @@ Removed: `copback` service, `copertine-internal` network, `depends_on`.
 | `backend/src/includes/utils.py` | Utility functions |
 | `backend/src/includes/prompts.py` | AI prompts (unused, but not part of this refactor) |
 | `frontend/app/components/PaginationControls.tsx` | Works as-is |
-| `frontend/app/components/Header.tsx` | Works as-is |
+| `frontend/app/components/header/Header.tsx` | Works as-is |
 | `frontend/app/layout.tsx` | Works as-is |
 | `frontend/next.config.ts` | No changes needed (keeps `basePath: '/copertine'`) |
