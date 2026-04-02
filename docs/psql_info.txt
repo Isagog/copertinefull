@@ -1,0 +1,9 @@
+Host: localhost (or mema-postgres if running inside Docker)
+
+Port: 5432
+
+Database: copertine
+
+User: copertine_app
+
+Password: h1khCzVxKiBPK0G0SXWpr8ZGxgdET_XQkaaZTb8gEvA
