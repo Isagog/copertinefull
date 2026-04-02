@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-02
 **Status**: Approved
-**Goal**: Replace Weaviate + FastAPI with PostgreSQL FTS5 + unified Next.js fullstack app
+**Goal**: Replace Weaviate + FastAPI with PostgreSQL full-text search + unified Next.js fullstack app
 
 ---
 
@@ -50,6 +50,7 @@ Images served by Nginx directly from /images/
 - Container: `isagog-postgres` (postgres:17-alpine), already running on isadue
 - Database: `copertine` (new)
 - Application user: `copertine_app` (SELECT, INSERT, UPDATE on `editions`)
+- **Setup requires superuser** for `CREATE EXTENSION unaccent` and `CREATE TEXT SEARCH CONFIGURATION` — run `setup_db.sql` as `postgres` user, then grant privileges to `copertine_app`
 
 ## 4. PostgreSQL Schema
 
@@ -72,7 +73,8 @@ CREATE TABLE editions (
         setweight(to_tsvector('italian_unaccent', coalesce(caption, '')), 'A') ||
         setweight(to_tsvector('italian_unaccent', coalesce(kicker, '')), 'B')
     ) STORED,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_editions_date ON editions (edition_date DESC);
@@ -83,6 +85,20 @@ CREATE INDEX idx_editions_search ON editions USING GIN (search_vector);
 - Caption weighted `A` (higher rank), kicker weighted `B`
 - Italian stemming + accent removal (`unaccent` extension)
 - `edition_id` (DD-MM-YYYY) unique constraint for deduplication
+- `updated_at` tracks when records were last upserted, useful for debugging
+
+### Dropped Weaviate fields
+
+The following Weaviate properties are intentionally **not** migrated to PostgreSQL:
+
+| Field | Reason for dropping |
+|-------|-------------------|
+| `testataName` | Always "Il Manifesto" — hardcoded in frontend if needed |
+| `captionAIStr` | Never populated (always empty/null in Weaviate) |
+| `imageAIDeStr` | Never populated (always empty/null in Weaviate) |
+| `modelAIName` | Never populated (always empty/null in Weaviate) |
+
+The export script (`export_weaviate.py`) will log a warning if any of these fields contain non-empty data, so nothing is silently lost.
 
 ## 5. Scraper Changes
 
@@ -96,7 +112,7 @@ The scraper (`backend/src/sd2.py`) stays as a host-side Python script run by cro
 ### What changes
 - Replace `weaviate` client → `psycopg2`
 - Replace Weaviate init/store/delete methods → `_init_db()`, `_upsert_edition()`
-- Add `DATABASE_URL` to `.secrets`
+- Add `DATABASE_URL` to `.secrets` (format: `DATABASE_URL=postgresql://copertine_app:PASSWORD@localhost:5432/copertine`). This file is gitignored and must never be committed.
 - Connects via localhost:5432 (isagog-loopback)
 
 ### Deduplication
@@ -106,8 +122,11 @@ VALUES (%s, %s, %s, %s, %s)
 ON CONFLICT (edition_id) DO UPDATE SET
     caption = EXCLUDED.caption,
     kicker = EXCLUDED.kicker,
-    image_filename = EXCLUDED.image_filename;
+    image_filename = EXCLUDED.image_filename,
+    updated_at = now();
 ```
+
+**Note**: `refreshbind.sh` currently calls `backend/src/scrape2.py` (which does not exist). This is a known bug. The fix replaces it with `sd2.py`, the actual scraper file.
 
 ### Cron (`refreshbind.sh`)
 ```bash
@@ -122,7 +141,7 @@ No container restart.
 
 ### Phase A: Export from isanew (`export_weaviate.py`)
 
-Standalone script, runs on isanew. Connects to Weaviate at localhost:8090 (gRPC 50091).
+Standalone script, runs on isanew. Connects to Weaviate using `COP_WEAVIATE_URL` and `COP_WEAVIATE_GRPC_PORT` from environment (defaults: localhost:8090, gRPC 50091 — verify actual ports on isanew before running).
 
 Produces:
 ```
@@ -175,6 +194,31 @@ GET /api/copertine?offset=0&limit=30          → browse (date desc)
 GET /api/copertine?q=immigrazione&limit=30    → FTS search (ranked by relevance)
 ```
 
+**Note**: The Next.js app uses `basePath: '/copertine'` in `next.config.ts`, so the full client-side URL is `/copertine/api/copertine?...`. The API route file itself lives at `app/api/copertine/route.ts`.
+
+### Search query (parameterized)
+
+All queries use `$1`, `$2` placeholders via `pg` — never string interpolation:
+
+```typescript
+// Browse mode
+const browseQuery = `
+  SELECT edition_id, edition_date, caption, kicker, image_filename
+  FROM editions ORDER BY edition_date DESC LIMIT $1 OFFSET $2
+`;
+const { rows } = await pool.query(browseQuery, [limit, offset]);
+
+// Search mode
+const searchQuery = `
+  SELECT edition_id, edition_date, caption, kicker, image_filename,
+         ts_rank(search_vector, websearch_to_tsquery('italian_unaccent', $1)) AS rank
+  FROM editions
+  WHERE search_vector @@ websearch_to_tsquery('italian_unaccent', $1)
+  ORDER BY rank DESC LIMIT $2 OFFSET $3
+`;
+const { rows } = await pool.query(searchQuery, [q, limit, offset]);
+```
+
 ### Database connection (`lib/db.ts`)
 ```typescript
 import { Pool } from 'pg';
@@ -187,9 +231,12 @@ const pool = new Pool({
 export default pool;
 ```
 
+`pg.Pool` handles connection failures gracefully — if PostgreSQL is temporarily unavailable, individual queries will fail but the pool will automatically reconnect on the next attempt. No startup health gate needed beyond the existing HTTP healthcheck.
+
 ### Component changes
 
 - **Eliminate `CustomEvent` anti-pattern**: `page.tsx` owns `searchQuery` state, passes `onSearch(query)` and `onReset()` callbacks to `SearchSection`
+- **Remove `imagePathCache` from `CopertinaCard`**: currently imports from `imageCache.ts` for path resolution. Replace with direct path construction: `/images/${copertina.filename}` — no cache layer needed
 - **No caching layer**: PostgreSQL responds in <1ms for ~500 rows with proper indexes
 - **Response shape unchanged**: `CopertineEntry[]` with `pagination` metadata
 
@@ -259,7 +306,7 @@ Removed: `copback` service, `copertine-internal` network, `depends_on`.
 | `frontend/app/api/copertine/route.ts` | Weaviate GraphQL → pg queries, add ?q= search |
 | `frontend/app/components/searchsection/SearchSection.tsx` | CustomEvent → callback props |
 | `frontend/app/copertine/page.tsx` | Own search state, remove CustomEvent listeners |
-| `frontend/app/components/copertina/CopertinaCard.tsx` | Remove Weaviate error text |
+| `frontend/app/components/copertina/CopertinaCard.tsx` | Remove Weaviate error text, replace `imagePathCache` import with direct path construction |
 | `frontend/app/types/search.ts` | Simplify types |
 | `frontend/app/lib/config/constants.ts` | Remove FASTAPI/WEAVIATE/CACHE constants |
 | `frontend/package.json` | Remove weaviate-ts-client, add pg + @types/pg |
@@ -277,11 +324,15 @@ Removed: `copback` service, `copertine-internal` network, `depends_on`.
 | `frontend/app/lib/services/imageCache.ts` | Unnecessary |
 | `backend/src/includes/weschema.py` | Weaviate schema |
 | `backend/Dockerfile` | No more copback container |
+| `frontend/app/types/weaviate.ts` | Weaviate-specific types |
 
 ### Untouched
 | File | Reason |
 |------|--------|
 | `backend/src/includes/mytypes.py` | Still useful for scraper validation |
 | `backend/src/includes/utils.py` | Utility functions |
+| `backend/src/includes/prompts.py` | AI prompts (unused, but not part of this refactor) |
 | `frontend/app/components/PaginationControls.tsx` | Works as-is |
-| `frontend/next.config.ts` | No changes needed |
+| `frontend/app/components/Header.tsx` | Works as-is |
+| `frontend/app/layout.tsx` | Works as-is |
+| `frontend/next.config.ts` | No changes needed (keeps `basePath: '/copertine'`) |
