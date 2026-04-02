@@ -1,7 +1,6 @@
 # Stage 1: Build
 FROM python:3.11-slim AS builder
-ENV POETRY_VERSION=2.0.1 \
-    PYTHONUNBUFFERED=1 \
+ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 # Install system dependencies
@@ -10,26 +9,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install poetry
-RUN curl -sSL https://install.python-poetry.org | python3 - && \
-    mv /root/.local/bin/poetry /usr/local/bin/poetry
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Set up working directory
 WORKDIR /app
 
 # Copy only necessary project files
-COPY pyproject.toml poetry.lock ./
-COPY src/search.py ./src/
-COPY src/includes/ ./src/includes/
+COPY pyproject.toml uv.lock ./
+COPY src/ ./src/
 
-# Install dependencies
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-interaction --no-ansi --no-root
+# Install dependencies into a virtual environment (no project install since package = false)
+RUN uv sync --frozen --no-dev
 
 # Stage 2: Runtime
 FROM python:3.11-slim AS runtime
 
-# Install runtime dependencies and tree
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgcc1 \
     tree \
@@ -44,12 +40,12 @@ RUN useradd -m nonroot && \
 USER nonroot
 WORKDIR /app
 
-# Copy Python packages and application
-COPY --chown=nonroot:nonroot --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
+# Copy the virtual environment and application from builder
+COPY --chown=nonroot:nonroot --from=builder /app/.venv/ /app/.venv/
 COPY --chown=nonroot:nonroot --from=builder /app/src/ ./src/
 
 # Set environment variables
 ENV PYTHONPATH="/app" \
-    PATH="/usr/local/bin:/usr/local/sbin:/usr/bin:/sbin:/bin"
+    PATH="/app/.venv/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/sbin:/bin"
 
 EXPOSE 8008
