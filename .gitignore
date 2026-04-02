@@ -79,3 +79,4 @@ backend/data/missingdates.txt
 backend/src/.DS_Store
 
 backups/
+.secrets
