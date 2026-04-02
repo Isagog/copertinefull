@@ -36,8 +36,7 @@ export default function Home() {
   const fetchPage = React.useCallback(async (offset: number) => {
     try {
       setIsLoading(true);
-      const baseUrl = window.location.origin;
-      const url = `${baseUrl}/copertine/api/copertine?offset=${offset}&limit=${pagination.limit}`;
+      const url = `/api/copertine?offset=${offset}&limit=${pagination.limit}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -72,8 +71,7 @@ export default function Home() {
     try {
       setIsLoading(true);
       setError(null);
-      const baseUrl = window.location.origin;
-      const url = `${baseUrl}/copertine/api/copertine?q=${encodeURIComponent(query)}&limit=${pagination.limit}&offset=0`;
+      const url = `/api/copertine?q=${encodeURIComponent(query)}&limit=${pagination.limit}&offset=0`;
       const response = await fetch(url);
 
       if (!response.ok) {
