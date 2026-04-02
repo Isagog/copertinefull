@@ -20,10 +20,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Set build-time environment variable
-ARG COPERTINE_JSON_FILE
-ENV COPERTINE_JSON_FILE=$COPERTINE_JSON_FILE
-
 # Build application
 RUN pnpm build
 
@@ -33,11 +29,6 @@ WORKDIR /app
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-
-# Define runtime environment variables
-ENV WEAVIATE_SCHEME=http
-ENV WEAVIATE_HOST=weaviate:8080
-ENV WEAVIATE_COLLECTION=Copertine
 
 # Copy necessary files
 COPY --from=builder /app/public ./public

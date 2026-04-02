@@ -4,6 +4,7 @@ import React from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import CopertinaCard from "../components/copertina/CopertinaCard";
 import PaginationControls from "../components/PaginationControls";
+import SearchSection from "../components/searchsection/SearchSection";
 import type {
   CopertineEntry,
   CopertineResponse,
@@ -13,12 +14,6 @@ import { PAGINATION } from "@/app/lib/config/constants";
 
 type SortField = "date" | "extracted_caption" | "relevance";
 type SortDirection = "asc" | "desc";
-
-// Define the type for our search results event
-interface SearchResultsEvent {
-  results: CopertineEntry[];
-  searchTerm: string;
-}
 
 export default function Home() {
   // State declarations
@@ -37,28 +32,20 @@ export default function Home() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Fetch page data
+  // Fetch a browse page (no search query)
   const fetchPage = React.useCallback(async (offset: number) => {
     try {
       setIsLoading(true);
-      console.log(`Fetching page with offset ${offset}`);
-
       const baseUrl = window.location.origin;
       const url = `${baseUrl}/copertine/api/copertine?offset=${offset}&limit=${pagination.limit}`;
-      console.log('Requesting URL:', url);
-      
       const response = await fetch(url);
-      console.log('Response status:', response.status);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Error response:', errorText);
         throw new Error(`Failed to fetch data: ${response.status} ${errorText}`);
       }
-      
+
       const data: CopertineResponse = await response.json();
-      console.log('Received data:', data);
-      
       if (!data.data || !Array.isArray(data.data)) {
         throw new Error('Invalid data format received');
       }
@@ -71,66 +58,57 @@ export default function Home() {
       setSortField('date');
       setError(null);
     } catch (err) {
-      console.error('Fetch error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load data');
       setCopertine([]);
       setOriginalOrder([]);
-      setPagination({
-        total: 0,
-        offset: 0,
-        limit: PAGINATION.ITEMS_PER_PAGE,
-        hasMore: false
-      });
+      setPagination({ total: 0, offset: 0, limit: PAGINATION.ITEMS_PER_PAGE, hasMore: false });
     } finally {
       setIsLoading(false);
     }
   }, [pagination.limit]);
 
-  // Handle search results and reset
-  React.useEffect(() => {
-    const handleSearchResults = (event: CustomEvent<SearchResultsEvent>) => {
-      console.log("Handling search results:", {
-        resultCount: event.detail.results.length,
-        searchTerm: event.detail.searchTerm,
-        sampleResults: event.detail.results.slice(0, 2),
-      });
+  // Handle search via the unified API route
+  const handleSearch = React.useCallback(async (query: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const baseUrl = window.location.origin;
+      const url = `${baseUrl}/copertine/api/copertine?q=${encodeURIComponent(query)}&limit=${pagination.limit}&offset=0`;
+      const response = await fetch(url);
 
-      setCopertine(event.detail.results);
-      setOriginalOrder(event.detail.results);
-      setCurrentSearchTerm(event.detail.searchTerm);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Search failed: ${response.status} ${errorText}`);
+      }
+
+      const data: CopertineResponse = await response.json();
+      if (!data.data || !Array.isArray(data.data)) {
+        throw new Error('Invalid data format received');
+      }
+
+      setCopertine(data.data);
+      setOriginalOrder(data.data);
+      setPagination(data.pagination);
       setIsSearchResult(true);
-      setSortField("relevance");
-      setPagination({
-        total: event.detail.results.length,
-        offset: 0,
-        limit: PAGINATION.ITEMS_PER_PAGE,
-        hasMore: event.detail.results.length > PAGINATION.ITEMS_PER_PAGE,
-      });
-    };
+      setCurrentSearchTerm(query);
+      setSortField('relevance');
 
-    const handleResetToFullList = () => {
-      fetchPage(0);
-    };
+      if (data.data.length === 0) {
+        setError(`Nessun risultato trovato per "${query}"`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
+      setCopertine([]);
+      setOriginalOrder([]);
+      setPagination({ total: 0, offset: 0, limit: PAGINATION.ITEMS_PER_PAGE, hasMore: false });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pagination.limit]);
 
-    window.addEventListener(
-      "searchResults",
-      handleSearchResults as EventListener
-    );
-    window.addEventListener(
-      "resetToFullList",
-      handleResetToFullList as EventListener
-    );
-
-    return () => {
-      window.removeEventListener(
-        "searchResults",
-        handleSearchResults as EventListener
-      );
-      window.removeEventListener(
-        "resetToFullList",
-        handleResetToFullList as EventListener
-      );
-    };
+  // Reset to full browse list
+  const handleReset = React.useCallback(() => {
+    fetchPage(0);
   }, [fetchPage]);
 
   // Initial load
@@ -143,7 +121,7 @@ export default function Home() {
     if (field === "relevance") {
       if (!isSearchResult) return;
       setSortField("relevance");
-      setSortDirection("desc"); // Always desc for relevance
+      setSortDirection("desc");
       return;
     }
 
@@ -165,16 +143,13 @@ export default function Home() {
       const modifier = sortDirection === "asc" ? 1 : -1;
 
       switch (sortField) {
-        case "date":
+        case "date": {
           const timeA = new Date(a.isoDate).getTime();
           const timeB = new Date(b.isoDate).getTime();
           return (timeA - timeB) * modifier;
+        }
         case "extracted_caption":
-          return (
-            a.extracted_caption.localeCompare(b.extracted_caption) * modifier
-          );
-        case "relevance":
-          return 0;
+          return a.extracted_caption.localeCompare(b.extracted_caption) * modifier;
         default:
           return 0;
       }
@@ -183,18 +158,21 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Search bar — owned by page, passes callbacks */}
+      <SearchSection
+        onSearch={handleSearch}
+        onReset={handleReset}
+        isSearchResult={isSearchResult}
+      />
+
       <section className="max-w-4xl mx-auto px-4 py-6">
-        {error ? (
+        {error && !isLoading ? (
           <div className="flex flex-col items-center justify-center min-h-[400px]">
             <div className="max-w-lg text-center space-y-4">
               <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                Unable to Connect to Database
+                {isSearchResult ? 'Nessun risultato' : 'Impossibile caricare i dati'}
               </div>
-              <div className="text-gray-600 dark:text-gray-400">
-                {error.includes("Weaviate")
-                  ? error
-                  : "The Weaviate database is currently unavailable. Please check your connection and try again."}
-              </div>
+              <div className="text-gray-600 dark:text-gray-400">{error}</div>
             </div>
           </div>
         ) : isLoading ? (
@@ -211,7 +189,6 @@ export default function Home() {
           <div>
             {/* Combined Sort and Pagination Controls */}
             <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4">
-              {/* Pagination Controls */}
               <PaginationControls
                 currentPage={Math.floor(pagination.offset / pagination.limit) + 1}
                 totalPages={Math.ceil(pagination.total / pagination.limit)}
@@ -261,16 +238,14 @@ export default function Home() {
                   <div className="flex flex-col">
                     <ChevronUp
                       className={`h-3 w-3 -mb-1 ${
-                        sortField === "extracted_caption" &&
-                        sortDirection === "asc"
+                        sortField === "extracted_caption" && sortDirection === "asc"
                           ? "text-blue-600 dark:text-blue-400"
                           : "text-gray-400"
                       }`}
                     />
                     <ChevronDown
                       className={`h-3 w-3 ${
-                        sortField === "extracted_caption" &&
-                        sortDirection === "desc"
+                        sortField === "extracted_caption" && sortDirection === "desc"
                           ? "text-blue-600 dark:text-blue-400"
                           : "text-gray-400"
                       }`}
@@ -284,9 +259,7 @@ export default function Home() {
                       setSortDirection("desc");
                     }}
                     className={`px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-gray-700 rounded-md transition-colors ${
-                      sortField === "relevance"
-                        ? "bg-blue-100 dark:bg-gray-700"
-                        : ""
+                      sortField === "relevance" ? "bg-blue-100 dark:bg-gray-700" : ""
                     }`}
                   >
                     Rilevanza
@@ -295,12 +268,12 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Copertine Cards with search term prop */}
+            {/* Copertine Cards */}
             <div className="space-y-6">
               {sortedCopertine.map((copertina) => (
-                <CopertinaCard 
-                  key={copertina.filename} 
-                  copertina={copertina} 
+                <CopertinaCard
+                  key={copertina.filename}
+                  copertina={copertina}
                   searchTerm={currentSearchTerm}
                 />
               ))}

@@ -1,4 +1,4 @@
-""" Scrape Directus 2 """
+""" Scrape Directus 2 — PostgreSQL backend """
 import argparse
 import logging
 import mimetypes
@@ -9,16 +9,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import psycopg2
 import requests
-import weaviate
-import weaviate.classes as wvc
 from dotenv import load_dotenv
-from weaviate.classes.init import Auth
 
 # Add the project root to the Python path
 sys.path.append(str(Path(__file__).parent.parent))
-
-from includes.weschema import COPERTINE_COLL_CONFIG
 
 # Constants
 HTTP_OK = 200
@@ -31,7 +27,7 @@ class ScraperError(Exception):
 
 class MissingEnvironmentVariableError(ScraperError):
     """Exception for missing environment variables."""
-    
+
     def __init__(self, var_name: str):
         self.var_name = var_name
         super().__init__(f"Environment variable '{var_name}' must be set.")
@@ -39,7 +35,7 @@ class MissingEnvironmentVariableError(ScraperError):
 
 class InvalidDateFormatError(ScraperError):
     """Exception for invalid date formats."""
-    
+
     def __init__(self, date_str: str):
         self.date_str = date_str
         super().__init__(f"Invalid date format for '{date_str}'. Expected YYYY-MM-DD format.")
@@ -47,28 +43,22 @@ class InvalidDateFormatError(ScraperError):
 
 class DateFileNotFoundError(ScraperError):
     """Exception for missing date files."""
-    
+
     def __init__(self, file_path: str):
         self.file_path = file_path
         super().__init__(f"Date file not found: {file_path}")
 
-    
-class WeaviateURLError(ValueError):
-    """Custom exception for missing Weaviate URL."""
-    def __init__(self, message="COP_WEAVIATE_URL environment variable not set."):
-        self.message = message
-        super().__init__(self.message)
 
 class DirectusManifestoScraper:
     """Scraper for Il Manifesto copertina articles from Directus CMS."""
-    
+
     def __init__(self):
         self._setup_logging()
         self._load_environment()
-        self._init_weaviate()
+        self._init_db()
         self._init_directus()
         self._setup_images_dir()
-    
+
     def _setup_logging(self):
         """Configure logging."""
         logging.basicConfig(
@@ -80,16 +70,16 @@ class DirectusManifestoScraper:
             ],
         )
         # Reduce noise from external libraries
-        for lib in ["weaviate", "httpx", "httpcore"]:
+        for lib in ["httpx", "httpcore"]:
             logging.getLogger(lib).setLevel(logging.WARNING)
-        
+
         self.logger = logging.getLogger(__name__)
-    
+
     def _load_environment(self):
-        """Load environment variables."""
-        secrets_path = Path(__file__).parent.parent / '.secrets'
+        """Load environment variables from project root .secrets."""
+        secrets_path = Path(__file__).parents[2] / '.secrets'
         load_dotenv(dotenv_path=secrets_path, override=True)
-    
+
     def _get_required_env(self, var_name: str) -> str:
         """Get a required environment variable or raise an error."""
         value = os.getenv(var_name)
@@ -97,83 +87,40 @@ class DirectusManifestoScraper:
             raise MissingEnvironmentVariableError(var_name)
         return value
 
-    
-    def _validate_weaviate_url(self, weaviate_url: str) -> None:
-        """Validate Weaviate URL and raise error if missing."""
-        if not weaviate_url:
-            raise WeaviateURLError()
-
-    def _init_weaviate(self):
-        """Initialize Weaviate client and collection."""
+    def _init_db(self):
+        """Initialize PostgreSQL connection."""
+        database_url = self._get_required_env("DATABASE_URL")
         try:
-            secrets_path = Path(__file__).parent.parent / ".secrets"
-            load_dotenv(dotenv_path=secrets_path)
-
-            weaviate_url = os.getenv("COP_WEAVIATE_URL", "")
-            weaviate_api_key = os.getenv("COP_WEAVIATE_API_KEY", "")
-            weaviate_grpc_port = os.getenv("COP_WEAVIATE_GRPC_PORT", "50051")
-
-            self._validate_weaviate_url(weaviate_url)
-
-            # This is a local connection - extract host and port
-            if "://" in weaviate_url:
-                # Parse full URL like http://weaviate2025:8090 or http://localhost:8080
-                protocol, rest = weaviate_url.split("://", 1)
-                if ":" in rest:
-                    host, port_str = rest.split(":", 1)
-                    port = int(port_str)
-                else:
-                    host = rest
-                    port = 8080
-            else:
-                # Just hostname like "localhost" or "weaviate2025"
-                host = weaviate_url
-                port = 8080
-
-            # Convert grpc_port to int
-            grpc_port = int(weaviate_grpc_port)
-
-            # Handle API key authentication for local connections
-            if weaviate_api_key and weaviate_api_key.strip():
-                self.weaviate_client = weaviate.connect_to_local(
-                    host=host,
-                    port=port,
-                    grpc_port=grpc_port,
-                    auth_credentials=Auth.api_key(weaviate_api_key),
-                )
-            else:
-                self.weaviate_client = weaviate.connect_to_local(
-                    host=host,
-                    port=port,
-                    grpc_port=grpc_port,
-                )
-            
-            # Ensure collection exists only after successful connection
-            self._ensure_collection()
-            
+            self.db_conn = psycopg2.connect(database_url)
+            self.db_conn.autocommit = False
+            self.logger.info("Connected to PostgreSQL")
         except Exception:
-            self.logger.exception("Failed to initialize Weaviate client")
+            self.logger.exception("Failed to connect to PostgreSQL")
             raise
-        else:
-            # Return the client to the caller
-            return self.weaviate_client
-    
-    def _ensure_collection(self):
-        """Ensure the Copertine collection exists in Weaviate."""
+
+    def _upsert_edition(self, edition_id: str, edition_date: datetime,
+                        caption: str, kicker: str | None, image_filename: str):
+        """Upsert a copertina edition into PostgreSQL."""
+        sql = """
+            INSERT INTO editions (edition_id, edition_date, caption, kicker, image_filename)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (edition_id) DO UPDATE SET
+                caption = EXCLUDED.caption,
+                kicker = EXCLUDED.kicker,
+                image_filename = EXCLUDED.image_filename,
+                updated_at = now();
+        """
+        date_only = edition_date.date() if hasattr(edition_date, 'date') else edition_date
         try:
-            collection_name = self._get_required_env("COP_COPERTINE_COLLNAME")
-            collections = self.weaviate_client.collections.list_all()
-            
-            if collection_name not in collections:
-                self.collection = self.weaviate_client.collections.create_from_dict(COPERTINE_COLL_CONFIG)
-                self.logger.info(f"Created {collection_name} collection in Weaviate")
-            else:
-                self.collection = self.weaviate_client.collections.get(collection_name)
-                
+            with self.db_conn.cursor() as cur:
+                cur.execute(sql, (edition_id, date_only, caption, kicker, image_filename))
+            self.db_conn.commit()
+            self.logger.info(f"Upserted edition {edition_id} into PostgreSQL")
         except Exception:
-            self.logger.exception("Failed to create or get collection")
+            self.db_conn.rollback()
+            self.logger.exception(f"Failed to upsert edition {edition_id}")
             raise
-    
+
     def _init_directus(self):
         """Initialize Directus configuration."""
         self.directus_token = self._get_required_env("DIRECTUS_API_TOKEN")
@@ -183,16 +130,16 @@ class DirectusManifestoScraper:
         }
         self.directus_url = "https://directus.ilmanifesto.it/items/articles"
         self.assets_url = "https://directus.ilmanifesto.it/assets"
-    
+
     def _setup_images_dir(self):
         """Setup images directory."""
         self.images_dir = Path(__file__).parent.parent.parent / "images"
         self.images_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def parse_dates_from_args(self) -> list[datetime]:
         """Parse command line arguments and return list of dates to process."""
         parser = argparse.ArgumentParser(
-            description="Fetch Il Manifesto copertina articles from Directus CMS and store in Weaviate"
+            description="Fetch Il Manifesto copertina articles from Directus CMS and store in PostgreSQL"
         )
         group = parser.add_mutually_exclusive_group(required=True)
         group.add_argument(
@@ -210,16 +157,17 @@ class DirectusManifestoScraper:
             type=str,
             help='File containing a list of dates to fetch, one per line in YYYY-MM-DD format'
         )
-        
+
         args = parser.parse_args()
-        
+
         if args.number:
             return self._generate_date_range(args.number)
         elif args.date:
             return [self._parse_single_date(args.date)]
         elif args.datefile:
             return self._parse_date_file(args.datefile)
-    
+        return []
+
     def _generate_date_range(self, number_of_days: int) -> list[datetime]:
         """Generate a list of dates for the last N days."""
         today = datetime.now(tz=timezone.utc)
@@ -228,20 +176,20 @@ class DirectusManifestoScraper:
             date = today - timedelta(days=i)
             dates.append(date)
         return dates
-    
+
     def _parse_single_date(self, date_str: str) -> datetime:
         """Parse a single date string."""
         try:
             return datetime.strptime(f"{date_str} +0000", "%Y-%m-%d %z")
         except ValueError as e:
             raise InvalidDateFormatError(date_str) from e
-    
+
     def _parse_date_file(self, date_file_path: str) -> list[datetime]:
         """Parse dates from a file."""
         date_file = Path(date_file_path)
         if not date_file.is_file():
             raise DateFileNotFoundError(date_file_path)
-        
+
         dates = []
         with date_file.open('r') as f:
             for line_num, line in enumerate(f, 1):
@@ -254,15 +202,15 @@ class DirectusManifestoScraper:
                     self.logger.warning(f"Line {line_num}: {e}")
                     continue
         return dates
-    
+
     def process_copertine(self, dates: list[datetime]):
         """Process copertina articles for multiple dates."""
         self.logger.info(f"Processing {len(dates)} dates")
-        
+
         for date in dates:
             date_str = date.strftime("%Y-%m-%d")
             self.logger.info(f"Processing copertina for date: {date_str}")
-            
+
             try:
                 article = self._fetch_copertina_for_date(date)
                 if article:
@@ -272,7 +220,7 @@ class DirectusManifestoScraper:
             except Exception:
                 self.logger.exception(f"Failed to process copertina for {date_str}")
                 continue
-    
+
     def _fetch_copertina_for_date(self, date: datetime) -> dict[str, Any] | None:
         """Fetch copertina article for a specific date from Directus."""
         params = {
@@ -284,151 +232,99 @@ class DirectusManifestoScraper:
             'sort': '-datePublished',
             'limit': 1
         }
-        
+
         try:
             response = requests.get(self.directus_url, params=params, headers=self.directus_headers, timeout=30.0)
             response.raise_for_status()
-            
+
             articles = response.json().get('data', [])
             if articles:
-                return articles[0]  # Return the first (and should be only) article
-                
+                return articles[0]
+
         except requests.RequestException:
             self.logger.exception(f"Error fetching copertina for {date.strftime('%Y-%m-%d')}")
-        
+
         return None
-    
+
     def _process_copertina(self, article: dict[str, Any], date: datetime):
         """Process a single copertina article."""
         if not self._validate_article(article):
             self.logger.warning(f"Article validation failed for ID {article.get('id')}")
             return
-        
+
         # Generate edition_id in DD-MM-YYYY format
         edition_id = date.strftime("%d-%m-%Y")
-        
-        # Delete existing copertine with the same editionId
-        deletion_successful = self._delete_existing_copertine(edition_id)
-        if not deletion_successful:
-            self.logger.error(f"Failed to delete existing objects with editionId {edition_id}. Aborting insertion to prevent duplicates.")
-            return
-        
-        # Download image and store in Weaviate
+
+        # Download image
         image_filename = self._download_and_save_image(article, date)
         if image_filename:
-            self._store_in_weaviate(article, date, image_filename)
+            self._upsert_edition(
+                edition_id=edition_id,
+                edition_date=date,
+                caption=article.get("referenceHeadline", ""),
+                kicker=article.get("articleKicker"),
+                image_filename=image_filename,
+            )
         else:
             self.logger.error(f"Failed to download image for article {article.get('id')}")
-    
+
     def _validate_article(self, article: dict[str, Any]) -> bool:
         """Validate that an article has all required properties."""
         required_fields = ["referenceHeadline", "articleFeaturedImage"]
         article_id = article.get("id", "N/A")
-        
+
         for field in required_fields:
             if not article.get(field):
                 self.logger.error(f"Article {article_id}: Missing required property: {field}")
                 return False
-        
+
         # Log warnings for optional fields
         optional_fields = ["articleKicker"]
         for field in optional_fields:
             if not article.get(field):
                 self.logger.warning(f"Article {article_id}: Missing optional property: {field}")
-        
+
         return True
-    
-    def _delete_existing_copertine(self, edition_id: str) -> bool:
-        """Delete all existing copertine with the given editionId.
-        
-        Returns:
-            bool: True if deletion was successful or no objects existed, False if deletion failed
-        """
-        try:
-            # Check if any objects exist
-            existing_objects = self.collection.query.fetch_objects(
-                filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
-                limit=100
-            )
-            
-            if not existing_objects.objects:
-                return True
-            
-            self.logger.info(f"Found {len(existing_objects.objects)} existing objects with editionId {edition_id}")
-            
-            # Delete by individual IDs
-            uuids_to_delete = [obj.uuid for obj in existing_objects.objects]
-            failed_deletions = []
-            
-            for uuid in uuids_to_delete:
-                try:
-                    self.collection.data.delete_by_id(uuid)
-                except Exception:
-                    self.logger.exception(f"Failed to delete object with UUID {uuid}")
-                    failed_deletions.append(uuid)
-            
-            if failed_deletions:
-                self.logger.error(f"Failed to delete {len(failed_deletions)} objects")
-                return False
-            
-            # Log successful deletion
-            self.logger.info(f"Successfully deleted {len(uuids_to_delete)} objects with editionId {edition_id}")
-            
-            # Verification
-            verify_objects = self.collection.query.fetch_objects(
-                filters=wvc.query.Filter.by_property("editionId").equal(edition_id),
-                limit=10
-            )
-            
-            if verify_objects.objects:
-                self.logger.error(f"Deletion verification failed: Still found {len(verify_objects.objects)} objects with editionId {edition_id}")
-                return False
-                
-        except Exception:
-            self.logger.exception("Error in deletion operation.")
-            return False
-        else:
-            return True
-    
+
     def _download_and_save_image(self, article: dict[str, Any], date: datetime) -> str | None:
         """Download and save the article's featured image."""
         image_id = article.get('articleFeaturedImage')
         if not image_id:
             self.logger.error(f"No featured image ID for article {article.get('id')}")
             return None
-        
+
         # Get the actual image URL from Directus
         image_url = self._get_asset_url(image_id)
         if not image_url:
             return None
-        
+
         # Generate filename
         filename = self._generate_image_filename(article, date)
         if not filename:
             return None
-        
+
         # Download the image
         return self._download_image(image_url, filename)
-    
+
     def _get_asset_url(self, image_id: str) -> str | None:
         """Get the asset URL for an image ID."""
         try:
             image_record_url = f"https://directus.ilmanifesto.it/items/images/{image_id}"
-            
+
             response = requests.get(image_record_url, headers=self.directus_headers, timeout=30.0)
             response.raise_for_status()
-            
+
             image_record = response.json().get('data')
             if image_record and "image" in image_record:
                 return f"{self.assets_url}/{image_record['image']}"
             else:
                 self.logger.error(f"Malformed image record for image ID {image_id}")
                 return None
-                    
+
         except requests.RequestException:
             self.logger.exception(f"Error getting asset URL for image {image_id}")
             return None
-    
+
     def _generate_image_filename(self, article: dict[str, Any], date: datetime) -> str | None:
         """Generate a descriptive filename for the image."""
         try:
@@ -440,28 +336,28 @@ class DirectusManifestoScraper:
                 slug = self._slugify(headline)
                 date_str = date.strftime('%Y-%m-%d')
                 return f"il-manifesto_{date_str}_{slug}"
-            
+
         except Exception:
             self.logger.exception("Error generating filename")
             return None
-    
+
     def _slugify(self, text: str) -> str:
         """Convert string to a URL-friendly slug."""
         text = text.lower()
         text = re.sub(r'[\s\W]+', '-', text)
         return text.strip('-')
-    
+
     def _download_image(self, image_url: str, base_filename: str) -> str | None:
         """Download image from URL and save to file."""
         try:
             self.logger.info(f"Downloading image from: {image_url}")
             response = requests.get(image_url, headers=self.directus_headers, timeout=30.0)
             response.raise_for_status()
-            
+
             if response.status_code != HTTP_OK:
                 self.logger.warning(f"Failed to download image. Status code: {response.status_code}")
                 return None
-            
+
             # Determine file extension from content type
             content_type = response.headers.get('content-type')
             if not content_type:
@@ -469,60 +365,33 @@ class DirectusManifestoScraper:
                 extension = '.jpg'  # Fallback
             else:
                 extension = mimetypes.guess_extension(content_type) or '.jpg'
-            
+
             # Create full filename with extension
             filename_with_ext = f"{base_filename}{extension}"
             file_path = self.images_dir / filename_with_ext
-            
+
             # Save the image
             file_path.write_bytes(response.content)
             self.logger.info(f"Image saved to {file_path}. Size: {len(response.content)} bytes")
-                
+
         except Exception:
             self.logger.exception(f"Error downloading image {image_url}")
             return None
         else:
             return filename_with_ext
-    
-    def _store_in_weaviate(self, article: dict[str, Any], date: datetime, image_filename: str):
-        """Store the copertina data in Weaviate."""
-        try:
-            edition_id = date.strftime("%d-%m-%Y")
-            # Format date as RFC3339 string (required by Weaviate)
-            # Ensure timezone info is included
-            if date.tzinfo is None:
-                date = date.replace(tzinfo=timezone.utc)
-            rfc3339_date = date.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-            
-            data = {
-                "testataName": "Il Manifesto",
-                "editionId": edition_id,
-                "editionDateIsoStr": rfc3339_date,
-                "editionImageFnStr": image_filename,
-                "captionStr": article.get("referenceHeadline"),
-                "kickerStr": article.get("articleKicker"),
-            }
-            
-            insert_result = self.collection.data.insert(properties=data)
-            self.logger.info(f"Successfully stored copertina for {edition_id} with UUID {insert_result}")
-            
-        except Exception:
-            self.logger.exception(f"Failed to store data in Weaviate for article {article.get('id')}")
-    
+
     def cleanup(self):
         """Clean up resources."""
-        if hasattr(self, 'weaviate_client') and self.weaviate_client:
+        if hasattr(self, 'db_conn') and self.db_conn:
             try:
-                self.weaviate_client.close()
+                self.db_conn.close()
+                self.logger.info("PostgreSQL connection closed")
             except Exception:
-                self.logger.exception("Error closing Weaviate client")
-            finally:
-                self.weaviate_client = None
-                self.collection = None
-    
+                self.logger.exception("Error closing PostgreSQL connection")
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cleanup()
 
@@ -533,12 +402,12 @@ def main():
         with DirectusManifestoScraper() as scraper:
             # a) Parse command line args to generate list of dates
             dates = scraper.parse_dates_from_args()
-            
+
             # b) Process copertine for all dates
             scraper.process_copertine(dates)
-            
+
         logging.getLogger(__name__).info("Successfully completed copertina processing.")
-        
+
     except ScraperError:
         logging.getLogger(__name__).exception("Scraper error")
         sys.exit(1)

@@ -1,20 +1,23 @@
-// app/types/search.ts
+// app/types/search.ts — simplified for PostgreSQL FTS
 
 export interface SearchRequest {
-  query: string;   // The search term
-  mode: 'literal' | 'fuzzy';  // Search mode matching FastAPI
-}
-
-export interface SearchResult {
-  testataName: string;
-  editionId: string;
-  editionDateIsoStr: string;
-  editionImageFnStr: string;
-  captionStr: string;
-  kickerStr: string;
+  query: string;
 }
 
 export interface SearchResponse {
-  results: SearchResult[];
-  total: number;
+  data: SearchEntry[];
+  pagination: {
+    total: number;
+    offset: number;
+    limit: number;
+    hasMore: boolean;
+  };
+}
+
+export interface SearchEntry {
+  extracted_caption: string;
+  kickerStr: string;
+  date: string;
+  filename: string;
+  isoDate: string;
 }

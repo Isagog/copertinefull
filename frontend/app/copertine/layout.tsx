@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import Header from "../components/header/Header";
-import SearchSection from "../components/searchsection/SearchSection";
 
 export default function CopertineLayout({
   children,
@@ -10,7 +9,6 @@ export default function CopertineLayout({
   return (
     <>
       <Header />
-      <SearchSection />
       <main>
         <Suspense
           fallback={

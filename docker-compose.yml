@@ -2,24 +2,20 @@ services:
   copfront:
     build:
       context: ./frontend
-    image: copfront:0.1.0
+    image: copfront:0.2.0
     container_name: copfront
-    # Run as non-root - adjust UID:GID to match your setup
     user: "1000:1000"
+    env_file: .secrets          # PROJECT ROOT .secrets — provides DB_PASSWORD
     environment:
       - NODE_ENV=production
       - PORT=3000
       - HOSTNAME=0.0.0.0
-      - WEAVIATE_SCHEME=http
-      - WEAVIATE_HOST=isagog-weaviate:8080
-      - WEAVIATE_COLLECTION=Copertine
-      - WEAVIATE_API_KEY=${WEAVIATE_API_KEY}
+      - DATABASE_URL=postgresql://copertine_app:${DB_PASSWORD}@mema-postgres:5432/copertine
     ports:
-      - "127.0.0.1:3737:3000"  # Bind to localhost only - Caddy will proxy
+      - "127.0.0.1:3737:3000"
     volumes:
-      - /srv/projects/mema/copertinefull/images:/images:ro
+      - /home/mema/code/copertinefull/images:/images:ro
     command: ["node", "server.js"]
-    # Hardening
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,size=64m
@@ -28,57 +24,14 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - isagog-internal      # Access to Weaviate backend
-      - copertine-internal   # Internal app network
+      - mema_docker_compose_mema_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
-    depends_on:
-      copback:
-        condition: service_healthy
-
-  copback:
-    build:
-      context: ./backend
-    image: copback:0.1.0
-    container_name: copback
-    # Run as non-root - adjust UID:GID to match your image volume ownership
-    user: "1000:1000"
-    environment:
-      - WEAVIATE_SCHEME=http
-      - WEAVIATE_HOST=isagog-weaviate:8080
-      - WEAVIATE_API_KEY=${WEAVIATE_API_KEY}
-    ports:
-      - "127.0.0.1:8383:8383"  # Bind to localhost only
-    volumes:
-      - /srv/projects/mema/copertinefull/images:/app/images:rw
-    # Hardening - read_only may need adjustment depending on what backend writes
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,size=128m
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - isagog-internal      # Access to Weaviate backend
-      - copertine-internal   # Internal app network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8383/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 networks:
-  # External network from infrastructure stack
-  isagog-internal:
+  mema_docker_compose_mema_network:
     external: true
-
-  # Internal network for this project's services to talk to each other
-  copertine-internal:
-    driver: bridge
-    internal: true
