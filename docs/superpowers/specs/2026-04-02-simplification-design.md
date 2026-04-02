@@ -306,6 +306,7 @@ Removed: `copback` service, `copertine-internal` network, `depends_on`.
 | `frontend/app/api/copertine/route.ts` | Weaviate GraphQL → pg queries, add ?q= search |
 | `frontend/app/components/searchsection/SearchSection.tsx` | CustomEvent → callback props |
 | `frontend/app/copertine/page.tsx` | Own search state, remove CustomEvent listeners, update Weaviate error messages to generic DB errors |
+| `frontend/app/copertine/layout.tsx` | Remove `SearchSection` rendering (moved to page.tsx which passes callback props) |
 | `frontend/app/components/copertina/CopertinaCard.tsx` | Remove Weaviate error text, replace `imagePathCache` import with direct path construction |
 | `frontend/app/types/search.ts` | Simplify types |
 | `frontend/app/lib/config/constants.ts` | Remove FASTAPI/WEAVIATE/CACHE constants |
@@ -334,5 +335,5 @@ Removed: `copback` service, `copertine-internal` network, `depends_on`.
 | `backend/src/includes/prompts.py` | AI prompts (unused, but not part of this refactor) |
 | `frontend/app/components/PaginationControls.tsx` | Works as-is |
 | `frontend/app/components/header/Header.tsx` | Works as-is |
-| `frontend/app/layout.tsx` | Works as-is |
+| `frontend/app/layout.tsx` | Works as-is (root layout) |
 | `frontend/next.config.ts` | No changes needed (keeps `basePath: '/copertine'`) |
