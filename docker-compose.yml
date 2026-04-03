@@ -3,7 +3,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: copfront:0.2.0
+    image: copfront:0.3.0
     container_name: copfront
     user: "1000:1000"
     env_file: .secrets          # PROJECT ROOT .secrets — provides DB_PASSWORD
