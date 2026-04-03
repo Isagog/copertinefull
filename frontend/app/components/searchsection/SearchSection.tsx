@@ -51,7 +51,7 @@ export default function SearchSection({ onSearch, onReset, isSearchResult }: Sea
 
   const resetButtonClasses = `${baseButtonClasses} ${
     isSearchResult
-      ? activeButtonClasses
+      ? primaryButtonClasses
       : inactiveButtonClasses
   }`;
 

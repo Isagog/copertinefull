@@ -5,6 +5,8 @@ export interface CopertineData {
     date: string;
     isoDate: string; // Added for proper sorting
     extraction_timestamp?: string;
+    caption_hl?: string;  // ts_headline output for search results
+    kicker_hl?: string;   // ts_headline output for search results
 }
 
 export interface CopertineEntry extends CopertineData {

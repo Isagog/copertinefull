@@ -27,7 +27,19 @@ function formatItalianDate(isoDate: string): string {
   return `${dayName}, ${day} ${month} ${year}`;
 }
 
-// Helper function to highlight search terms
+// Parse ts_headline output (contains <mark>...</mark>) into React nodes.
+// Safe: ts_headline only injects <mark> tags, no other HTML.
+const parseHighlights = (html: string): React.ReactNode => {
+  const parts = html.split(/(<mark>.*?<\/mark>)/gs);
+  return parts.map((part, i) => {
+    if (part.startsWith('<mark>')) {
+      return <span key={i} className="bg-yellow-200 dark:bg-yellow-700">{part.slice(6, -7)}</span>;
+    }
+    return part;
+  });
+};
+
+// Fallback: highlight exact search term when ts_headline data is unavailable
 const highlightText = (text: string, searchTerm: string) => {
   if (!searchTerm?.trim()) return text;
 
@@ -72,7 +84,9 @@ export default function CopertinaCard({ copertina, searchTerm }: CopertinaCardPr
         {/* Title and Date row */}
         <div className="flex flex-wrap items-center gap-2 text-lg">
           <div className="font-semibold text-gray-900 dark:text-gray-100">
-            {highlightText(copertina.extracted_caption, searchTerm || '')}
+            {copertina.caption_hl
+              ? parseHighlights(copertina.caption_hl)
+              : highlightText(copertina.extracted_caption, searchTerm || '')}
           </div>
           <span className="text-gray-600 dark:text-gray-300">-</span>
           <div className="text-gray-600 dark:text-gray-300">
@@ -100,7 +114,9 @@ export default function CopertinaCard({ copertina, searchTerm }: CopertinaCardPr
           {/* Kicker Text */}
           <div className="w-full md:max-w-lg text-lg leading-relaxed text-gray-700 dark:text-gray-300">
             <p className="text-justify">
-              {highlightText(copertina.kickerStr, searchTerm || '')}
+              {copertina.kicker_hl
+                ? parseHighlights(copertina.kicker_hl)
+                : highlightText(copertina.kickerStr, searchTerm || '')}
             </p>
           </div>
         </div>

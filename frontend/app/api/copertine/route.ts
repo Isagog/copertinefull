@@ -13,7 +13,11 @@ export async function GET(request: NextRequest) {
       // Full-text search mode — ranked by relevance
       const searchQuery = `
         SELECT edition_id, edition_date, caption, kicker, image_filename,
-               ts_rank(search_vector, websearch_to_tsquery('italian_unaccent', $1)) AS rank
+               ts_rank(search_vector, websearch_to_tsquery('italian_unaccent', $1)) AS rank,
+               ts_headline('italian_unaccent', caption, websearch_to_tsquery('italian_unaccent', $1),
+                 'HighlightAll=true, StartSel=<mark>, StopSel=</mark>') AS caption_hl,
+               ts_headline('italian_unaccent', kicker, websearch_to_tsquery('italian_unaccent', $1),
+                 'HighlightAll=true, StartSel=<mark>, StopSel=</mark>') AS kicker_hl
         FROM editions
         WHERE search_vector @@ websearch_to_tsquery('italian_unaccent', $1)
         ORDER BY rank DESC LIMIT $2 OFFSET $3
@@ -75,5 +79,7 @@ function rowToEntry(row: any) {
     date: new Date(isoDate).toLocaleDateString('it-IT'),
     filename: row.image_filename as string,
     isoDate,
+    ...(row.caption_hl != null && { caption_hl: row.caption_hl as string }),
+    ...(row.kicker_hl != null && { kicker_hl: row.kicker_hl as string }),
   };
 }
