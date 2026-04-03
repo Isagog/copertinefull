@@ -14,6 +14,7 @@
 #   make prod-up        Start production containers
 #   make prod-down      Stop production containers
 #   make prod-restart   Restart production containers
+#   make prod-build     Force rebuild all images and start containers
 #   make prod-log       Tail production container logs
 # ──────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ local-log:
 # Production (Docker Compose)
 # ──────────────────────────────────────────────
 
-.PHONY: prod-up prod-down prod-restart prod-log
+.PHONY: prod-up prod-down prod-restart prod-log prod-build
 
 prod-up:
 	docker compose up -d
@@ -86,6 +87,10 @@ prod-down:
 
 prod-restart:
 	docker compose down
+	docker compose up -d
+
+prod-build:
+	docker compose build --no-cache
 	docker compose up -d
 
 prod-log:
