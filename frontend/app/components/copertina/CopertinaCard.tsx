@@ -30,10 +30,10 @@ function formatItalianDate(isoDate: string): string {
 // Parse ts_headline output (contains <mark>...</mark>) into React nodes.
 // Safe: ts_headline only injects <mark> tags, no other HTML.
 const parseHighlights = (html: string): React.ReactNode => {
-  const parts = html.split(/(<mark>.*?<\/mark>)/gs);
+  const parts = html.split(/(<mark>[\s\S]*?<\/mark>)/g);
   return parts.map((part, i) => {
     if (part.startsWith('<mark>')) {
-      return <span key={i} className="bg-yellow-200 dark:bg-yellow-700">{part.slice(6, -7)}</span>;
+      return <span key={i} className="bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-200 px-1 rounded-sm font-medium">{part.slice(6, -7)}</span>;
     }
     return part;
   });
@@ -48,7 +48,7 @@ const highlightText = (text: string, searchTerm: string) => {
 
   return parts.map((part, i) => {
     if (part.toLowerCase() === searchTerm.toLowerCase()) {
-      return <span key={i} className="bg-yellow-200 dark:bg-yellow-700">{part}</span>;
+      return <span key={i} className="bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-200 px-1 rounded-sm font-medium">{part}</span>;
     }
     return part;
   });

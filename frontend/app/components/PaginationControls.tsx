@@ -32,44 +32,44 @@ const PaginationControls: React.FC<PaginationControlsProps> = ({
       
       <div className="flex items-center gap-1">
         <Button
-          variant="blue"
+          variant="outline"
           size="icon"
           onClick={() => onPageChange(1)}
           disabled={currentPage === 1 || isLoading || totalItems === 0}
-          className="w-8 h-8"
+          className="w-8 h-8 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900"
           title="Prima pagina"
         >
           <ChevronFirst className="h-4 w-4" />
         </Button>
         
         <Button
-          variant="blue"
+          variant="outline"
           size="icon"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1 || isLoading || totalItems === 0}
-          className="w-8 h-8"
+          className="w-8 h-8 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900"
           title="Pagina precedente"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
         
         <Button
-          variant="blue"
+          variant="outline"
           size="icon"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages || isLoading || totalItems === 0}
-          className="w-8 h-8"
+          className="w-8 h-8 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900"
           title="Pagina successiva"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
         
         <Button
-          variant="blue"
+          variant="outline"
           size="icon"
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages || isLoading || totalItems === 0}
-          className="w-8 h-8"
+          className="w-8 h-8 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900"
           title="Ultima pagina"
         >
           <ChevronLast className="h-4 w-4" />
