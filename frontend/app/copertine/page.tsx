@@ -4,7 +4,7 @@ import React from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import CopertinaCard from "../components/copertina/CopertinaCard";
 import PaginationControls from "../components/PaginationControls";
-import SearchSection from "../components/searchsection/SearchSection";
+import SearchSection, { type SearchMode } from "../components/searchsection/SearchSection";
 import type {
   CopertineEntry,
   CopertineResponse,
@@ -67,11 +67,11 @@ export default function Home() {
   }, [pagination.limit]);
 
   // Handle search via the unified API route
-  const handleSearch = React.useCallback(async (query: string) => {
+  const handleSearch = React.useCallback(async (query: string, mode: SearchMode) => {
     try {
       setIsLoading(true);
       setError(null);
-      const url = `/api/copertine?q=${encodeURIComponent(query)}&limit=${pagination.limit}&offset=0`;
+      const url = `/api/copertine?q=${encodeURIComponent(query)}&mode=${mode}&limit=${pagination.limit}&offset=0`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -89,7 +89,7 @@ export default function Home() {
       setPagination(data.pagination);
       setIsSearchResult(true);
       setCurrentSearchTerm(query);
-      setSortField('relevance');
+      setSortField(mode === 'varianti' ? 'relevance' : 'date');
 
       if (data.data.length === 0) {
         setError(`Nessun risultato trovato per "${query}"`);

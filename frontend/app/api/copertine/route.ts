@@ -5,40 +5,68 @@ import pool from '@/app/lib/db';
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const q = searchParams.get('q')?.trim() || '';
+  const mode = searchParams.get('mode') === 'varianti' ? 'varianti' : 'esatta';
   const offset = parseInt(searchParams.get('offset') || '0');
   const limit = parseInt(searchParams.get('limit') || '30');
 
   try {
     if (q) {
-      // Full-text search mode — ranked by relevance
-      const searchQuery = `
-        SELECT edition_id, edition_date, caption, kicker, image_filename,
-               ts_rank(search_vector, websearch_to_tsquery('italian_unaccent', $1)) AS rank,
-               ts_headline('italian_unaccent', caption, websearch_to_tsquery('italian_unaccent', $1),
-                 'HighlightAll=true, StartSel=<mark>, StopSel=</mark>') AS caption_hl,
-               ts_headline('italian_unaccent', kicker, websearch_to_tsquery('italian_unaccent', $1),
-                 'HighlightAll=true, StartSel=<mark>, StopSel=</mark>') AS kicker_hl
-        FROM editions
-        WHERE search_vector @@ websearch_to_tsquery('italian_unaccent', $1)
-        ORDER BY rank DESC LIMIT $2 OFFSET $3
-      `;
-      const countQuery = `
-        SELECT count(*)::int AS total
-        FROM editions
-        WHERE search_vector @@ websearch_to_tsquery('italian_unaccent', $1)
-      `;
+      if (mode === 'esatta') {
+        // Exact substring match — ILIKE, ordered by date
+        const searchQuery = `
+          SELECT edition_id, edition_date, caption, kicker, image_filename
+          FROM editions
+          WHERE caption ILIKE '%' || $1 || '%' OR kicker ILIKE '%' || $1 || '%'
+          ORDER BY edition_date DESC LIMIT $2 OFFSET $3
+        `;
+        const countQuery = `
+          SELECT count(*)::int AS total
+          FROM editions
+          WHERE caption ILIKE '%' || $1 || '%' OR kicker ILIKE '%' || $1 || '%'
+        `;
 
-      const [{ rows }, { rows: countRows }] = await Promise.all([
-        pool.query(searchQuery, [q, limit, offset]),
-        pool.query(countQuery, [q]),
-      ]);
+        const [{ rows }, { rows: countRows }] = await Promise.all([
+          pool.query(searchQuery, [q, limit, offset]),
+          pool.query(countQuery, [q]),
+        ]);
 
-      const total: number = countRows[0].total;
+        const total: number = countRows[0].total;
 
-      return Response.json({
-        data: rows.map(rowToEntry),
-        pagination: { total, offset, limit, hasMore: offset + limit < total },
-      });
+        return Response.json({
+          data: rows.map(rowToEntry),
+          pagination: { total, offset, limit, hasMore: offset + limit < total },
+        });
+      } else {
+        // Full-text search mode — stemmed, ranked by relevance
+        const searchQuery = `
+          SELECT edition_id, edition_date, caption, kicker, image_filename,
+                 ts_rank(search_vector, websearch_to_tsquery('italian_unaccent', $1)) AS rank,
+                 ts_headline('italian_unaccent', caption, websearch_to_tsquery('italian_unaccent', $1),
+                   'HighlightAll=true, StartSel=<mark>, StopSel=</mark>') AS caption_hl,
+                 ts_headline('italian_unaccent', kicker, websearch_to_tsquery('italian_unaccent', $1),
+                   'HighlightAll=true, StartSel=<mark>, StopSel=</mark>') AS kicker_hl
+          FROM editions
+          WHERE search_vector @@ websearch_to_tsquery('italian_unaccent', $1)
+          ORDER BY rank DESC LIMIT $2 OFFSET $3
+        `;
+        const countQuery = `
+          SELECT count(*)::int AS total
+          FROM editions
+          WHERE search_vector @@ websearch_to_tsquery('italian_unaccent', $1)
+        `;
+
+        const [{ rows }, { rows: countRows }] = await Promise.all([
+          pool.query(searchQuery, [q, limit, offset]),
+          pool.query(countQuery, [q]),
+        ]);
+
+        const total: number = countRows[0].total;
+
+        return Response.json({
+          data: rows.map(rowToEntry),
+          pagination: { total, offset, limit, hasMore: offset + limit < total },
+        });
+      }
     } else {
       // Browse mode — ordered by date desc
       const browseQuery = `

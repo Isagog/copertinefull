@@ -4,8 +4,10 @@
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 
+export type SearchMode = 'esatta' | 'varianti';
+
 interface SearchSectionProps {
-  onSearch: (query: string) => void;
+  onSearch: (query: string, mode: SearchMode) => void;
   onReset: () => void;
   isSearchResult: boolean;
 }
@@ -13,6 +15,7 @@ interface SearchSectionProps {
 export default function SearchSection({ onSearch, onReset, isSearchResult }: SearchSectionProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchMode, setSearchMode] = useState<SearchMode>('esatta');
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +23,7 @@ export default function SearchSection({ onSearch, onReset, isSearchResult }: Sea
 
     setIsSearching(true);
     try {
-      await onSearch(searchTerm.trim());
+      await onSearch(searchTerm.trim(), searchMode);
     } finally {
       setIsSearching(false);
     }
@@ -79,7 +82,25 @@ export default function SearchSection({ onSearch, onReset, isSearchResult }: Sea
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
                   </div>
                 </div>
-                <div className="sm:self-auto flex gap-2">
+                <div className="sm:self-auto flex gap-2 items-center">
+                  {/* Mode toggle */}
+                  <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 h-12">
+                    {(['esatta', 'varianti'] as SearchMode[]).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setSearchMode(mode)}
+                        className={`px-3 text-sm font-medium transition-colors duration-200 ${
+                          searchMode === mode
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+
                   <button
                     type="submit"
                     disabled={isSearching || searchTerm.trim().length < 2}
