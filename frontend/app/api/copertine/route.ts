@@ -1,70 +1,79 @@
 // app/api/copertine/route.ts
 import { NextRequest } from 'next/server';
-import { getWeaviateClient } from '@/app/lib/services/weaviate';
-
-// Add interface for Weaviate response item
-interface WeaviateCopertineItem {
-    captionStr: string;
-    editionDateIsoStr: string;
-    editionId: string;
-    editionImageFnStr: string;
-    kickerStr: string;
-    testataName: string;
-}
+import pool from '@/app/lib/db';
 
 export async function GET(request: NextRequest) {
-    const searchParams = request.nextUrl.searchParams;
-    const offset = parseInt(searchParams.get('offset') || '0');
-    const limit = parseInt(searchParams.get('limit') || '30');
+  const searchParams = request.nextUrl.searchParams;
+  const q = searchParams.get('q')?.trim() || '';
+  const offset = parseInt(searchParams.get('offset') || '0');
+  const limit = parseInt(searchParams.get('limit') || '30');
 
-    try {
-        const client = getWeaviateClient();
-        
-        const result = await client.graphql
-            .get()
-            .withClassName('Copertine')
-            .withFields(`
-                captionStr
-                editionDateIsoStr
-                editionId
-                editionImageFnStr
-                kickerStr
-                testataName
-            `)
-            .withSort([{ 
-                path: ["editionDateIsoStr"], 
-                order: "desc" 
-            }])
-            .withLimit(limit)
-            .withOffset(offset)
-            .do();
+  try {
+    if (q) {
+      // Full-text search mode — ranked by relevance
+      const searchQuery = `
+        SELECT edition_id, edition_date, caption, kicker, image_filename,
+               ts_rank(search_vector, websearch_to_tsquery('italian_unaccent', $1)) AS rank
+        FROM editions
+        WHERE search_vector @@ websearch_to_tsquery('italian_unaccent', $1)
+        ORDER BY rank DESC LIMIT $2 OFFSET $3
+      `;
+      const countQuery = `
+        SELECT count(*)::int AS total
+        FROM editions
+        WHERE search_vector @@ websearch_to_tsquery('italian_unaccent', $1)
+      `;
 
-        const countResult = await client.graphql
-            .aggregate()
-            .withClassName('Copertine')
-            .withFields('meta { count }')
-            .do();
+      const [{ rows }, { rows: countRows }] = await Promise.all([
+        pool.query(searchQuery, [q, limit, offset]),
+        pool.query(countQuery, [q]),
+      ]);
 
-        // Transform the data for the frontend with proper typing
-        const mappedData = result.data.Get.Copertine.map((item: WeaviateCopertineItem) => ({
-            extracted_caption: item.captionStr,
-            kickerStr: item.kickerStr,
-            date: new Date(item.editionDateIsoStr).toLocaleDateString('it-IT'),
-            filename: item.editionImageFnStr,
-            isoDate: item.editionDateIsoStr
-        }));
+      const total: number = countRows[0].total;
 
-        return Response.json({
-            data: mappedData,
-            pagination: {
-                total: countResult.data.Aggregate.Copertine[0].meta.count,
-                offset,
-                limit,
-                hasMore: offset + limit < countResult.data.Aggregate.Copertine[0].meta.count
-            }
-        });
-    } catch (error) {
-        console.error('Failed to connect to Weaviate:', error);
-        return Response.json({ error: 'Failed to fetch data' }, { status: 500 });
+      return Response.json({
+        data: rows.map(rowToEntry),
+        pagination: { total, offset, limit, hasMore: offset + limit < total },
+      });
+    } else {
+      // Browse mode — ordered by date desc
+      const browseQuery = `
+        SELECT edition_id, edition_date, caption, kicker, image_filename
+        FROM editions ORDER BY edition_date DESC LIMIT $1 OFFSET $2
+      `;
+      const countQuery = `SELECT count(*)::int AS total FROM editions`;
+
+      const [{ rows }, { rows: countRows }] = await Promise.all([
+        pool.query(browseQuery, [limit, offset]),
+        pool.query(countQuery),
+      ]);
+
+      const total: number = countRows[0].total;
+
+      return Response.json({
+        data: rows.map(rowToEntry),
+        pagination: { total, offset, limit, hasMore: offset + limit < total },
+      });
     }
+  } catch (error) {
+    console.error('Database query failed:', error);
+    return Response.json({ error: 'Failed to fetch data' }, { status: 500 });
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToEntry(row: any) {
+  // edition_date comes back as a JS Date from pg for DATE columns
+  const isoDate: string =
+    row.edition_date instanceof Date
+      ? row.edition_date.toISOString()
+      : String(row.edition_date);
+
+  return {
+    extracted_caption: row.caption as string,
+    kickerStr: (row.kicker ?? '') as string,
+    date: new Date(isoDate).toLocaleDateString('it-IT'),
+    filename: row.image_filename as string,
+    isoDate,
+  };
 }

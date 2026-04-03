@@ -1,7 +1,7 @@
 # Copertine Simplification — Design Spec (mema3 Production)
 
 **Date**: 2026-04-02
-**Status**: In Progress — DB + images migration COMPLETE, code changes pending
+**Status**: ✅ COMPLETE — deployed on mema3 as `copfront:0.2.0`, serving 4311 editions via PostgreSQL FTS
 **Goal**: Replace Weaviate + FastAPI with PostgreSQL full-text search + unified Next.js fullstack app on **mema3**
 **Supersedes**: `2026-04-02-simplification-design.md` (original, isadue-targeted) + `2026-04-02-simplification-plan-mema3.md` (environment addendum)
 

@@ -80,3 +80,4 @@ backend/src/.DS_Store
 
 backups/
 .secrets
+.env
