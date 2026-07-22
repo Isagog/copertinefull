@@ -128,8 +128,8 @@ class DirectusManifestoScraper:
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self.directus_token}'
         }
-        self.directus_url = "https://directus.ilmanifesto.it/items/articles"
-        self.assets_url = "https://directus.ilmanifesto.it/assets"
+        self.directus_url = "https://pulse.ilmanifesto.it/items/articles"
+        self.assets_url = "https://pulse.ilmanifesto.it/assets"
 
     def _setup_images_dir(self):
         """Setup images directory."""
@@ -309,7 +309,7 @@ class DirectusManifestoScraper:
     def _get_asset_url(self, image_id: str) -> str | None:
         """Get the asset URL for an image ID."""
         try:
-            image_record_url = f"https://directus.ilmanifesto.it/items/images/{image_id}"
+            image_record_url = f"https://pulse.ilmanifesto.it/items/images/{image_id}"
 
             response = requests.get(image_record_url, headers=self.directus_headers, timeout=30.0)
             response.raise_for_status()
