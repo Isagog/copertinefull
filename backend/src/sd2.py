@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import psycopg2
 import requests
@@ -18,6 +19,11 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 # Constants
 HTTP_OK = 200
+# Il Manifesto publishes each edition's cover at Rome-local midnight, which is
+# 22:00-23:00 UTC the day before. Directus stores true UTC, so the query
+# window and the stored edition date must both be computed in Rome-local
+# calendar days, not UTC calendar days.
+ROME_TZ = ZoneInfo("Europe/Rome")
 
 
 class ScraperError(Exception):
@@ -222,13 +228,19 @@ class DirectusManifestoScraper:
                 continue
 
     def _fetch_copertina_for_date(self, date: datetime) -> dict[str, Any] | None:
-        """Fetch copertina article for a specific date from Directus."""
+        """Fetch copertina article for a specific Rome-calendar date from Directus."""
+        day = date.date() if hasattr(date, 'date') else date
+        start_rome = datetime(day.year, day.month, day.day, tzinfo=ROME_TZ)
+        end_rome = start_rome + timedelta(days=1)
+        start_utc = start_rome.astimezone(timezone.utc)
+        end_utc = end_rome.astimezone(timezone.utc)
+
         params = {
             'fields': 'id,articleEdition,referenceHeadline,articleTag,articleKicker,datePublished,author,headline,articleEditionPosition,articleFeaturedImageDescription,articleFeaturedImage',
             'filter[syncSource][_eq]': 'wp',
             'filter[articlePositionCover][_eq]': 1,
-            'filter[datePublished][_gte]': date.strftime('%Y-%m-%dT00:00:00'),
-            'filter[datePublished][_lte]': date.strftime('%Y-%m-%dT23:59:59'),
+            'filter[datePublished][_gte]': start_utc.strftime('%Y-%m-%dT%H:%M:%S'),
+            'filter[datePublished][_lt]': end_utc.strftime('%Y-%m-%dT%H:%M:%S'),
             'sort': '-datePublished',
             'limit': 1
         }
@@ -252,21 +264,46 @@ class DirectusManifestoScraper:
             self.logger.warning(f"Article validation failed for ID {article.get('id')}")
             return
 
+        edition_date = self._resolve_edition_date(article, date)
+
         # Generate edition_id in DD-MM-YYYY format
-        edition_id = date.strftime("%d-%m-%Y")
+        edition_id = edition_date.strftime("%d-%m-%Y")
 
         # Download image
-        image_filename = self._download_and_save_image(article, date)
+        image_filename = self._download_and_save_image(article, edition_date)
         if image_filename:
             self._upsert_edition(
                 edition_id=edition_id,
-                edition_date=date,
+                edition_date=edition_date,
                 caption=article.get("referenceHeadline", ""),
                 kicker=article.get("articleKicker"),
                 image_filename=image_filename,
             )
         else:
             self.logger.error(f"Failed to download image for article {article.get('id')}")
+
+    def _resolve_edition_date(self, article: dict[str, Any], requested_date: datetime) -> datetime:
+        """Derive the true Rome-calendar edition date from the article's own publish timestamp.
+
+        Belt-and-braces alongside the Rome-aware query window in
+        _fetch_copertina_for_date: the stored date always reflects what the
+        article itself says, so a boundary edge case in the query can't silently
+        mislabel an edition again.
+        """
+        published_str = article.get('datePublished')
+        if not published_str:
+            return requested_date
+
+        published_utc = datetime.fromisoformat(published_str.replace('Z', '+00:00'))
+        edition_date = published_utc.astimezone(ROME_TZ)
+
+        if edition_date.date() != requested_date.date():
+            self.logger.info(
+                f"Article {article.get('id')} published {published_str} resolves to "
+                f"Rome edition date {edition_date.date()}, not queried date {requested_date.date()}"
+            )
+
+        return edition_date
 
     def _validate_article(self, article: dict[str, Any]) -> bool:
         """Validate that an article has all required properties."""
