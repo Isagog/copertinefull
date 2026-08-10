@@ -1,7 +1,10 @@
 # Base image for Node.js
 FROM node:20-alpine AS base
 
-# Install pnpm
+# Install pnpm. The version comes from the "packageManager" field in
+# package.json — without that pin corepack resolves to whatever pnpm is
+# newest at build time, which is how this image stopped building: pnpm 11
+# cannot be loaded by the corepack bundled in node:20-alpine.
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable

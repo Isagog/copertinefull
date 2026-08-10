@@ -1,11 +1,16 @@
 // app/components/copertina/CopertinaCard.tsx
 import { useState, useEffect } from "react";
 import { CopertineEntry } from "@app/types/copertine";
+import type { SearchScope } from "@app/types/search";
+import { matchRanges } from "@app/lib/highlight";
 import Image from "next/image";
 
 interface CopertinaCardProps {
   copertina: CopertineEntry;
   searchTerm?: string;
+  /** Mirrors the Granularita switch, so highlights match what was searched. */
+  matchWholeWord?: boolean;
+  scope?: SearchScope;
 }
 
 const months = [
@@ -16,6 +21,9 @@ const months = [
 const days = [
   'Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'
 ];
+
+const MARK_CLASS =
+  "bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-200 px-1 rounded-sm font-medium";
 
 function formatItalianDate(isoDate: string): string {
   const date = new Date(isoDate);
@@ -33,33 +41,47 @@ const parseHighlights = (html: string): React.ReactNode => {
   const parts = html.split(/(<mark>[\s\S]*?<\/mark>)/g);
   return parts.map((part, i) => {
     if (part.startsWith('<mark>')) {
-      return <span key={i} className="bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-200 px-1 rounded-sm font-medium">{part.slice(6, -7)}</span>;
+      return <span key={i} className={MARK_CLASS}>{part.slice(6, -7)}</span>;
     }
     return part;
   });
 };
 
-// Fallback: highlight exact search term when ts_headline data is unavailable
-const highlightText = (text: string, searchTerm: string) => {
-  if (!searchTerm?.trim()) return text;
+/** Client-side highlighting for the literal (Esatta) modes. */
+function highlightText(text: string, searchTerm: string, wholeWord: boolean): React.ReactNode {
+  if (!searchTerm?.trim() || !text) return text;
 
-  const escapedSearchTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const parts = text.split(new RegExp(`(${escapedSearchTerm})`, 'gi'));
+  const ranges = matchRanges(text, searchTerm, wholeWord);
+  if (ranges.length === 0) return text;
 
-  return parts.map((part, i) => {
-    if (part.toLowerCase() === searchTerm.toLowerCase()) {
-      return <span key={i} className="bg-red-100 text-red-900 dark:bg-red-900/30 dark:text-red-200 px-1 rounded-sm font-medium">{part}</span>;
-    }
-    return part;
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+
+  ranges.forEach(([start, end], i) => {
+    if (start > cursor) nodes.push(text.slice(cursor, start));
+    nodes.push(<span key={i} className={MARK_CLASS}>{text.slice(start, end)}</span>);
+    cursor = end;
   });
-};
+  if (cursor < text.length) nodes.push(text.slice(cursor));
 
-export default function CopertinaCard({ copertina, searchTerm }: CopertinaCardProps) {
+  return nodes;
+}
+
+export default function CopertinaCard({
+  copertina,
+  searchTerm,
+  matchWholeWord = true,
+  scope = 'tutto',
+}: CopertinaCardProps) {
   const [isPopupVisible, setIsPopupVisible] = useState(false);
 
   // Direct image path — no cache layer needed
   const imagePath = `/images/${copertina.filename}`;
   const formattedDate = formatItalianDate(copertina.isoDate);
+
+  // Under "Solo titolo" the kicker was never searched, so marking it would
+  // claim a match the query never made.
+  const kickerTerm = scope === 'titolo' ? '' : (searchTerm || '');
 
   const togglePopup = () => setIsPopupVisible(!isPopupVisible);
   const closePopup = () => setIsPopupVisible(false);
@@ -86,7 +108,7 @@ export default function CopertinaCard({ copertina, searchTerm }: CopertinaCardPr
           <div className="font-semibold text-gray-900 dark:text-gray-100">
             {copertina.caption_hl
               ? parseHighlights(copertina.caption_hl)
-              : highlightText(copertina.extracted_caption, searchTerm || '')}
+              : highlightText(copertina.extracted_caption, searchTerm || '', matchWholeWord)}
           </div>
           <span className="text-gray-600 dark:text-gray-300">-</span>
           <div className="text-gray-600 dark:text-gray-300">
@@ -116,7 +138,7 @@ export default function CopertinaCard({ copertina, searchTerm }: CopertinaCardPr
             <p className="text-justify">
               {copertina.kicker_hl
                 ? parseHighlights(copertina.kicker_hl)
-                : highlightText(copertina.kickerStr, searchTerm || '')}
+                : highlightText(copertina.kickerStr, kickerTerm, matchWholeWord)}
             </p>
           </div>
         </div>

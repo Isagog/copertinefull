@@ -39,7 +39,23 @@ ALTER TEXT SEARCH CONFIGURATION italian_unaccent
     WITH unaccent, italian_stem;
 
 -----------------------------------------------------------
--- 5. Editions table
+-- 5. Normalizer for literal ("Esatta") search
+-----------------------------------------------------------
+-- Folds case, accents and the two apostrophe forms the corpus mixes, so
+-- "perche" finds "Perche' no" and "c'e" finds "nell(U+2019)emergenza".
+-- The two-argument unaccent() form is IMMUTABLE (the one-argument form is
+-- only STABLE), which is what allows IMMUTABLE here and lets the planner
+-- inline the call. No SET search_path clause on purpose: it would block
+-- that inlining, and unaccent lives in public.
+CREATE OR REPLACE FUNCTION cop_norm(t text) RETURNS text
+    LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS
+$$ SELECT lower(unaccent('unaccent', regexp_replace(t, '[’‘´`]', '''', 'g'))) $$;
+
+COMMENT ON FUNCTION cop_norm(text) IS
+    'Case/accent/apostrophe folding for literal search (Esatta modes).';
+
+-----------------------------------------------------------
+-- 6. Editions table
 -----------------------------------------------------------
 CREATE TABLE editions (
     id              SERIAL PRIMARY KEY,
@@ -48,9 +64,15 @@ CREATE TABLE editions (
     caption         TEXT NOT NULL,
     kicker          TEXT,
     image_filename  TEXT NOT NULL,
+    -- Whole record (caption + kicker), for "Tutto il testo" under Varianti
     search_vector   TSVECTOR GENERATED ALWAYS AS (
         setweight(to_tsvector('italian_unaccent', coalesce(caption, '')), 'A') ||
         setweight(to_tsvector('italian_unaccent', coalesce(kicker, '')), 'B')
+    ) STORED,
+    -- Caption alone, for "Solo titolo" under Varianti. search_vector cannot
+    -- answer that query: a kicker hit would still satisfy @@.
+    caption_vector  TSVECTOR GENERATED ALWAYS AS (
+        to_tsvector('italian_unaccent', coalesce(caption, ''))
     ) STORED,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -58,11 +80,17 @@ CREATE TABLE editions (
 
 CREATE INDEX idx_editions_date ON editions (edition_date DESC);
 CREATE INDEX idx_editions_search ON editions USING GIN (search_vector);
+CREATE INDEX idx_editions_caption_search ON editions USING GIN (caption_vector);
 
 -----------------------------------------------------------
--- 6. Final Permissions Check
+-- 7. Final Permissions Check
 -----------------------------------------------------------
--- Ensure the app user owns the schema and all objects within it
+-- Ensure the app user owns the schema and all objects within it.
+-- ALTER SCHEMA alone is not enough: objects created by the superuser running
+-- this script stay owned by that superuser, which then blocks copertine_app
+-- from running migrations against them.
 ALTER SCHEMA public OWNER TO copertine_app;
+ALTER TABLE editions OWNER TO copertine_app;
+ALTER FUNCTION cop_norm(text) OWNER TO copertine_app;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO copertine_app;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO copertine_app;
