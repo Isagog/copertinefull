@@ -155,9 +155,9 @@ def import_jsonl(db_url: str, jsonl_path: Path, batch_size: int = 200) -> None:
             psycopg2.extras.execute_batch(cur, UPSERT_SQL, b, page_size=batch_size)
             conn.commit()
             stats["upserted"] += len(b)
-        except Exception as exc:
+        except Exception:
             conn.rollback()
-            log.error("Batch commit failed (%d records rolled back): %s", len(b), exc)
+            log.exception("Batch commit failed (%d records rolled back)", len(b))
             stats["errors"] += len(b)
 
     log.info("Reading %s ...", jsonl_path)

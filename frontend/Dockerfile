@@ -45,3 +45,19 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
+
+# The image is self-contained: the old mema3 compose supplied
+# `command: ["node", "server.js"]` and the three env vars below, so the image
+# could not be run without that file. Under Dokploy the compose carries no
+# `command:` and no `environment:` (the x-app anchor forbids it), so the
+# defaults have to live here.
+#
+# HOSTNAME=0.0.0.0 is not cosmetic: Next's standalone server binds localhost by
+# default, which inside a container means nothing outside it — including Traefik
+# — can reach the port.
+EXPOSE 3000
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+CMD ["node", "server.js"]

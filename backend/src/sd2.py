@@ -66,14 +66,24 @@ class DirectusManifestoScraper:
         self._setup_images_dir()
 
     def _setup_logging(self):
-        """Configure logging."""
+        """Configure logging.
+
+        stderr is always a handler; a log FILE is only added when COP_LOG_FILE
+        is set. In a container the old unconditional scrapedirectus.log was
+        both invisible (it landed in the container's writable layer) and
+        unbounded, whereas stderr goes to Docker's json-file driver, which the
+        compose file rotates. On a host checkout, set COP_LOG_FILE to get the
+        previous behaviour back.
+        """
+        handlers: list[logging.Handler] = [logging.StreamHandler()]
+        log_file = os.getenv("COP_LOG_FILE")
+        if log_file:
+            handlers.append(logging.FileHandler(log_file))
+
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
-            handlers=[
-                logging.FileHandler("scrapedirectus.log"),
-                logging.StreamHandler(),
-            ],
+            handlers=handlers,
         )
         # Reduce noise from external libraries
         for lib in ["httpx", "httpcore"]:
@@ -138,9 +148,17 @@ class DirectusManifestoScraper:
         self.assets_url = "https://pulse.ilmanifesto.it/assets"
 
     def _setup_images_dir(self):
-        """Setup images directory."""
-        self.images_dir = Path(__file__).parent.parent.parent / "images"
+        """Setup images directory.
+
+        COP_IMAGES_DIR points this at the mounted volume under Docker, where
+        the source tree is at /app and the repo-relative default would put
+        covers on the container's writable layer — i.e. lose them on every
+        redeploy. The default keeps a host checkout working unchanged.
+        """
+        default = Path(__file__).parent.parent.parent / "images"
+        self.images_dir = Path(os.getenv("COP_IMAGES_DIR") or default)
         self.images_dir.mkdir(parents=True, exist_ok=True)
+        self.logger.info(f"Images directory: {self.images_dir}")
 
     def parse_dates_from_args(self) -> list[datetime]:
         """Parse command line arguments and return list of dates to process."""

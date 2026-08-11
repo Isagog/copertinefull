@@ -1,5 +1,13 @@
 # Copertine Full Stack — Architecture Analysis
 
+> **HISTORICAL — describes the pre-migration mema3 deployment.** Written while the
+> archive still lived in Weaviate behind a FastAPI `copback`, deployed by hand on
+> mema3 with a host nginx vhost and a systemd timer. It is kept because §8 is the
+> reasoning that produced the current Postgres-FTS design, not because any of the
+> topology below is still true. For what runs today see the root
+> [`README.md`](../README.md); for how it is deployed see
+> [`isagog-platform-dokploy/copertine/README.md`](https://github.com/Isagog/isagog-platform-dokploy/blob/master/copertine/README.md).
+
 ## 1. Scraping
 
 Two scrapers exist with overlapping purpose.

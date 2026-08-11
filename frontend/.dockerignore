@@ -1,0 +1,15 @@
+# The builder stage does `COPY . .`, so without this the local working tree's
+# `.next/` and `node_modules/` are copied into the build context and then
+# shadow what the `deps` stage installed — a build that succeeds locally and
+# produces a different image in CI (where those directories do not exist).
+node_modules
+.next
+out
+
+.git
+.gitignore
+.DS_Store
+README.md
+Dockerfile
+.dockerignore
+npm-debug.log*
