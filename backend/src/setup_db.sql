@@ -1,22 +1,41 @@
 -- backend/src/setup_db.sql
--- Run as your specific superuser (isagog):
--- docker exec -i mema-postgres psql -U isagog -d postgres < backend/src/setup_db.sql
+--
+-- Run as a superuser against the target Postgres. On mema4 that is the managed
+-- pgvector instance, whose superuser is `postgres`:
+--
+--   docker exec -i <pg-container> psql -U postgres -d postgres \
+--       -v ON_ERROR_STOP=1 -v copertine_password='<generated>' \
+--       < backend/src/setup_db.sql
+--
+-- The password is a psql VARIABLE, never a literal in this file. An earlier
+-- revision hardcoded the live one here, which put a working production
+-- credential into git history.
+--
+-- Both steps below use \gexec rather than a DO block. That is not a style
+-- choice: psql does NOT interpolate :variables inside dollar-quoted strings,
+-- so a `DO $$ ... :copertine_password ... $$` would ship the literal text
+-- ":copertine_password" to the server. \gexec runs outside any quoting, and it
+-- is also the only way to make CREATE DATABASE conditional — that statement
+-- cannot run inside a DO block or a transaction at all.
+
+\set ON_ERROR_STOP on
 
 -----------------------------------------------------------
 -- 1. Create Database and User
 -----------------------------------------------------------
--- We check if the user exists first to avoid errors on re-runs
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'copertine_app') THEN
-        CREATE USER copertine_app WITH PASSWORD 'h1khCzVxKiBPK0G0SXWpr8ZGxgdET_XQkaaZTb8gEvA';
-    END IF;
-END
-$$;
+-- Idempotent: each SELECT yields either one CREATE statement for \gexec to
+-- run, or zero rows, in which case \gexec does nothing.
+SELECT format('CREATE USER copertine_app WITH PASSWORD %L', :'copertine_password')
+WHERE NOT EXISTS (
+    SELECT FROM pg_catalog.pg_roles WHERE rolname = 'copertine_app'
+)
+\gexec
 
--- Drop and recreate or just create the database
--- Note: You cannot run CREATE DATABASE inside a transaction block or DO block
-CREATE DATABASE copertine OWNER copertine_app;
+SELECT 'CREATE DATABASE copertine OWNER copertine_app'
+WHERE NOT EXISTS (
+    SELECT FROM pg_catalog.pg_database WHERE datname = 'copertine'
+)
+\gexec
 
 -----------------------------------------------------------
 -- 2. Switch to the new database
@@ -26,14 +45,24 @@ CREATE DATABASE copertine OWNER copertine_app;
 -----------------------------------------------------------
 -- 3. Extensions (requires superuser)
 -----------------------------------------------------------
--- Since you are logged in as 'isagog', you have rights to do this
+-- unaccent must exist BEFORE the editions table: its generated tsvector
+-- columns depend on the italian_unaccent configuration below, which in turn
+-- depends on this extension.
 CREATE EXTENSION IF NOT EXISTS unaccent;
 
 -----------------------------------------------------------
 -- 4. Italian FTS with accent-insensitive search
 -----------------------------------------------------------
--- We create this in the 'public' schema of the 'copertine' DB
-CREATE TEXT SEARCH CONFIGURATION italian_unaccent (COPY = italian);
+-- Created in the 'public' schema of the 'copertine' DB. There is no
+-- IF NOT EXISTS form for CREATE TEXT SEARCH CONFIGURATION, hence \gexec again
+-- — without the guard a re-run of this script aborts here, after the role and
+-- database have already been created.
+SELECT 'CREATE TEXT SEARCH CONFIGURATION italian_unaccent (COPY = italian)'
+WHERE NOT EXISTS (
+    SELECT FROM pg_ts_config WHERE cfgname = 'italian_unaccent'
+)
+\gexec
+
 ALTER TEXT SEARCH CONFIGURATION italian_unaccent
     ALTER MAPPING FOR hword, hword_part, word
     WITH unaccent, italian_stem;
@@ -57,7 +86,7 @@ COMMENT ON FUNCTION cop_norm(text) IS
 -----------------------------------------------------------
 -- 6. Editions table
 -----------------------------------------------------------
-CREATE TABLE editions (
+CREATE TABLE IF NOT EXISTS editions (
     id              SERIAL PRIMARY KEY,
     edition_id      VARCHAR(10) NOT NULL UNIQUE,
     edition_date    DATE NOT NULL,
@@ -78,9 +107,9 @@ CREATE TABLE editions (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_editions_date ON editions (edition_date DESC);
-CREATE INDEX idx_editions_search ON editions USING GIN (search_vector);
-CREATE INDEX idx_editions_caption_search ON editions USING GIN (caption_vector);
+CREATE INDEX IF NOT EXISTS idx_editions_date ON editions (edition_date DESC);
+CREATE INDEX IF NOT EXISTS idx_editions_search ON editions USING GIN (search_vector);
+CREATE INDEX IF NOT EXISTS idx_editions_caption_search ON editions USING GIN (caption_vector);
 
 -----------------------------------------------------------
 -- 7. Final Permissions Check

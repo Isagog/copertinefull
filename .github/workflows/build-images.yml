@@ -1,0 +1,142 @@
+# Builds the three copertine images and pushes them to GHCR.
+#
+# This is the ONLY place these images are built. The Dokploy host never builds
+# anything: its compose file (isagog-platform-dokploy/copertine/) pulls
+# ghcr.io/isagog/copertine-* with `pull_policy: always`, which is what makes
+# the `latest` tag safe to point a deployment at.
+#
+# Every image is tagged twice — `latest` for the normal deploy path, and the
+# commit SHA so a bad deploy can be rolled back by pinning IMAGE_TAG in
+# Dokploy's Environment tab instead of reverting and rebuilding.
+
+name: build-images
+
+on:
+  push:
+    branches: [main]
+    # Only the changed image rebuilds; the matrix job filters on these below.
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'nginx/**'
+      - '.github/workflows/build-images.yml'
+  # Build but do NOT push on a PR. This exists because of a GitHub constraint
+  # that bites exactly once, on the first run: `workflow_dispatch` is only
+  # offered for workflows that already live on the default branch, so a brand
+  # new workflow cannot be triggered by hand from its own feature branch. The
+  # PR trigger is what proves all three Dockerfiles build before anything is
+  # merged — and it keeps proving it afterwards.
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'nginx/**'
+      - '.github/workflows/build-images.yml'
+  workflow_dispatch:
+    inputs:
+      force_all:
+        description: 'Rebuild all three images regardless of what changed'
+        type: boolean
+        default: true
+
+env:
+  REGISTRY: ghcr.io
+  # Lower-cased on purpose: GHCR rejects uppercase path segments, and the org
+  # is spelled "Isagog".
+  OWNER: isagog
+
+jobs:
+  # Path filtering lives in its own job so the matrix can consume it. Doing it
+  # with `paths:` on the workflow alone would rebuild all three images whenever
+  # any one of them changed.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      scraper: ${{ steps.filter.outputs.scraper }}
+      images: ${{ steps.filter.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            scraper:
+              - 'backend/Dockerfile'
+              - 'backend/pyproject.toml'
+              - 'backend/uv.lock'
+              - 'backend/src/**'
+              - 'backend/docker/**'
+            images:
+              - 'nginx/**'
+
+  build:
+    needs: changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      # One image failing must not cancel the others: a broken scraper build
+      # should not block shipping a frontend fix.
+      fail-fast: false
+      matrix:
+        include:
+          - name: copertine-frontend
+            context: frontend
+            changed: frontend
+          - name: copertine-scraper
+            context: backend
+            changed: scraper
+          - name: copertine-images
+            context: nginx
+            changed: images
+    steps:
+      - name: Decide whether to build
+        id: should
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && [ "${{ inputs.force_all }}" = "true" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ needs.changes.outputs[matrix.changed] }}" = "true" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "No changes under ${{ matrix.context }}/ — skipping."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.should.outputs.build == 'true'
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.should.outputs.build == 'true'
+
+      # Skipped on PRs: nothing is pushed there, and a fork PR's GITHUB_TOKEN
+      # has no packages:write to log in with anyway.
+      - uses: docker/login-action@v3
+        if: steps.should.outputs.build == 'true' && github.event_name != 'pull_request'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.name }}
+        if: steps.should.outputs.build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          # linux/amd64 only: every deployment target is x86_64. Adding arm64
+          # would double build time to serve nothing.
+          platforms: linux/amd64
+          # PRs validate the build; only main publishes.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.name }}:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.name }}:${{ github.sha }}
+          # GitHub's build cache, not the registry's: the frontend's pnpm
+          # install is the slow step and it is identical between runs.
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+          provenance: false

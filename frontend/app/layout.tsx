@@ -22,7 +22,12 @@ export default function RootLayout({
   return (
     <html lang="it" className={fontSans.variable}>
       <head>
-        <link rel="preload" href="/copertine/manifesto_logo.svg" as="image" />
+        {/* Served by Next from `public/`, i.e. at the ROOT — not under
+            /copertine/. That prefix worked only on mema3, where an nginx
+            `alias` mapped /copertine/ onto frontend/public/ because the app
+            shared a vhost with a dozen other services. On its own host there
+            is no such alias and the prefixed path 404s. */}
+        <link rel="preload" href="/manifesto_logo.svg" as="image" />
       </head>
       <body className="antialiased">
         <ThemeProvider defaultTheme="light">

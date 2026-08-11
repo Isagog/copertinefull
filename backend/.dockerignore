@@ -1,0 +1,17 @@
+# .venv is a host-built virtualenv with absolute paths baked into its scripts —
+# copying it into the image would shadow the one uv builds in the deps stage.
+.venv
+__pycache__
+*.pyc
+
+# `images` is a symlink to ../images (999 MB of covers). The build context must
+# never include it: those live in a Docker volume, not in the image.
+images
+
+data
+tests
+tools
+experiments
+*.log
+.secrets
+.DS_Store

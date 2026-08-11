@@ -1,306 +1,148 @@
-# Il Manifesto Copertine Archive
+# Copertine — il manifesto's front-page archive
 
-A full stack application to archive and search through the opening stories ("copertine") of Il Manifesto newspaper.
+A searchable archive of *il manifesto*'s daily front pages ("copertine"): 4500+
+editions back to 2013-03-27, each with its cover image, headline and kicker, updated
+every morning from the paper's CMS.
 
-## Overview
+Currently live at **http://mema3.ilmanifesto.it/copertine**. Moving to mema4 as a
+Dokploy app — on the generated `*.traefik.me` host first, then
+`copertine.ilmanifesto.it` once DNS exists.
 
-This project provides a searchable archive of Il Manifesto's opening stories, with automated daily updates and a modern web interface.
+## What this repo is
 
-## System Dependencies
+The **application** — three container images, built by CI and published to GHCR:
 
-1. **External Systems**
-   - Il Manifesto digital edition webpage (source of daily articles)
-   - Host filesystem with `/images` directory
-   - Weaviate vector database with `Copertine` collection
+| Image | Built from | What it is |
+|---|---|---|
+| `ghcr.io/isagog/copertine-frontend` | [`frontend/`](frontend/) | Next.js 15 app: the grid, the search UI, and the API routes that query Postgres |
+| `ghcr.io/isagog/copertine-scraper` | [`backend/`](backend/) | `sd2.py` plus a scheduler that runs it daily at 08:00 UTC |
+| `ghcr.io/isagog/copertine-images` | [`nginx/`](nginx/) | nginx serving the cover JPEGs off a Docker volume |
 
-2. **Infrastructure Requirements**
-   - Docker and Docker Compose
-   - Nginx server
-   - Crontab for scheduling
-   - Network connectivity to Il Manifesto website
+The **deployment** lives elsewhere, in
+[`Isagog/isagog-platform-dokploy`](https://github.com/Isagog/isagog-platform-dokploy)
+under `copertine/` — a Dokploy Compose app on mema4. That split is deliberate: Dokploy
+takes a full clone of whatever repo it deploys from onto the host, and mema4 is
+customer-owned, so the deployment repo carries only topology and config while this
+repo's source stays off the machine. flow2 and pdfmanifesto are structured the same
+way.
 
 ## Architecture
 
-The system consists of three main components:
-
-1. **Batch Scraper**
-   - Runs daily at 7:30 AM (Tuesday through Sunday)
-   - Heuristically extracts opening article content:
-     - Article title
-     - Article kicker
-     - Associated image
-   - Saves images to `/images` directory
-   - Stores metadata in Weaviate collection
-   - Automated via crontab
-
-2. **Backend Service (Python FastAPI)**
-   - REST API for searching copertine
-   - Interfaces with Weaviate vector database
-   - Handles image processing and metadata extraction
-   - Runs in Docker container on port 8383
-   - Returns consolidated response with:
-     - Article title
-     - Article kicker
-     - Image file path
-
-3. **Frontend Application (Next.js 14)**
-   - Web interface for browsing and searching copertine
-   - Built with Next.js 14 and TypeScript
-   - Uses pnpm for package management
-   - Features server-side rendering and image caching
-   - Runs in Docker container on port 3737
-
-4. **Database (Weaviate)**
-   - Vector database storing copertine metadata and search indices
-   - Connected via Docker network
-   - Provides strong BM25F text search capabilities
-
-   **Collection Schema (`Copertine`)**
-   ```
-   Properties:
-   - testataName (text)        : Publication name, non-searchable field
-   - editionId (text)          : Unique identifier for each edition, non-searchable
-   - editionDateIsoStr (date)  : Publication date
-   - editionImageFnStr (text)  : Image filename reference, non-searchable
-   - captionStr (text)         : Scraped caption text, non-filterable
-   - kickerStr (text)          : Scraped news description, non-filterable
-   - captionAIStr (text)       : AI-extracted caption, non-filterable
-   - imageAIDeStr (text)       : AI-generated image description, non-filterable
-   - modelAIName (text)        : LLM model used, non-searchable
-   ```
-
-   **Collection Configuration**
-   - No vector indexing enabled (`vectorizer: none`)
-   - Text fields use BM25F for search capabilities
-   - Date field supports chronological operations
-   - Field-level tokenization for exact matching where needed
-   - Optimized for text search and filtering operations
-
-## System Architecture
-
-### Component Interaction Diagram
 ```mermaid
 graph LR
-    IM[Il Manifesto] --> BS[Batch Scraper]
-    BS --> W[(Weaviate)]
-    BS --> FS[/Images/]
-    BE[Backend :8383] --> W
-    BE --> FS
-    FE[Frontend :3737] --> BE
+    D[pulse.ilmanifesto.it<br/>Directus CMS] -->|08:00 UTC daily| S[copertine-scraper]
+    S -->|upsert by edition_id| P[(Postgres<br/>editions)]
+    S -->|cover JPEG| V[/volume<br/>copertine-images/]
+    F[copertine-frontend] -->|SQL| P
+    T{Traefik} -->|/| F
+    T -->|/images| N[copertine-images<br/>nginx]
+    N -->|ro| V
 ```
 
-### Daily Update Process
-```mermaid
-sequenceDiagram
-    participant C as Cron
-    participant S as Scraper
-    participant IM as Manifesto
-    participant W as Weaviate
-    participant FS as Files
-    C->>S: Daily scrape
-    S->>IM: Fetch edition
-    S->>W: Store metadata
-    S->>FS: Save image
-    C->>C: Restart app
+There is no separate API service. An earlier design put a FastAPI `copback` and a
+Weaviate vector database in this path; both were removed once it was clear the app
+only ever used keyword search, which Postgres does natively. See
+[`docs/current_analysis.md`](docs/current_analysis.md) for that reasoning — it is
+kept as history and describes the *old* mema3 topology, not this one.
+
+### Search
+
+Everything runs in Postgres, through three independent switches the UI exposes:
+
+| Switch | Options | Implementation |
+|---|---|---|
+| **Corrispondenza** | Esatta / Varianti | literal match via `cop_norm()` vs. `tsquery` against a `tsvector` |
+| **Granularità** | Parola intera / Stringa | word-boundary regex vs. substring. Only meaningful under *Esatta* — `Varianti` runs on a tokenized vector, so it is always word-level |
+| **Ambito** | Solo titolo / Tutto il testo | `caption_vector` vs. `search_vector` (caption weight A + kicker weight B) |
+
+Two pieces of schema make this work, both in
+[`backend/src/setup_db.sql`](backend/src/setup_db.sql):
+
+- **`italian_unaccent`** — a text search configuration copying `italian` with
+  `unaccent` in the mapping, so stemming and accent-folding happen together.
+- **`cop_norm(text)`** — folds case, accents, and the three apostrophe forms the
+  corpus mixes (the archive has both ASCII `'` and typographic `’`). It is `IMMUTABLE`
+  via the two-argument `unaccent()` form specifically so the planner can inline it.
+
+Sorting by relevance is only offered where a rank exists (`Varianti` + a non-empty
+query); the API route silently falls back to date order otherwise.
+
+### Scraping
+
+`backend/src/sd2.py` reads the cover article from Directus at
+`pulse.ilmanifesto.it/items/articles`, filtered to `articleEditionPosition = 1`.
+
+The date handling is the subtle part: **il manifesto publishes each edition's cover at
+Rome-local midnight**, which is 22:00–23:00 *UTC the day before*. Directus stores true
+UTC, so both the query window and the stored `edition_date` are computed in
+Rome-local calendar days. 08:00 UTC is chosen as a comfortable buffer after that.
+
+Upserts are keyed on `edition_id` (`DD-MM-YYYY`), so re-running is idempotent. The
+container re-fetches the last `COP_SCRAPE_LOOKBACK_DAYS` (default 3) on every run,
+which is what makes a missed day self-heal without any catch-up bookkeeping.
+
+## Layout
+
 ```
-
-## Data Flow
-
-1. **Collection (Daily)**
-   - Scraper fetches Il Manifesto digital edition
-   - Extracts opening article content
-   - Stores image in filesystem
-   - Saves metadata to Weaviate
-
-2. **Retrieval**
-   - Frontend sends search/browse requests
-   - Backend queries Weaviate collection
-   - Returns consolidated response
-   - Frontend displays results with image previews
-
-## Setup
-
-### System Requirements
-
-1. **Hardware Requirements**
-   - Sufficient disk space for image storage in `/images` directory
-   - Minimum 4GB RAM recommended for Docker containers
-   - Network connectivity to Il Manifesto website
-
-2. **Software Prerequisites**
-   - Docker Engine 20.10+
-   - Docker Compose 2.0+
-   - Nginx 1.18+
-   - Crontab access
-   - Weaviate 1.19+ instance
-
-### Initial Setup
-
-1. **Repository Setup**
-   ```bash
-   git clone [repository-url]
-   cd copertinefull
-   ```
-
-2. **Directory Structure**
-   ```
-   copertinefull/
-   ├── images/           # Image storage directory
-   ├── frontend/         # Next.js frontend application
-   ├── backend/         # FastAPI backend service
-   └── docker-compose.yml
-   ```
-
-3. **Environment Configuration**
-   Create `.env` file in the backend directory:
-   ```env
-   COP_WEAVIATE_URL=127.0.0.1
-   COP_WEAVIATE_API_KEY=your_weaviate_api_key
-   COP_COPERTINE_COLLNAME=Copertine
-   COP_VISION_MODELNAME=gpt-4-vision-preview
-   COP_OLDEST_DATE=2013-03-27
-   ```
-
-### Container Deployment
-
-1. **Start Services**
-   ```bash
-   docker-compose up -d copback    # Start backend service
-   docker-compose up -d copfront   # Start frontend service
-   ```
-
-2. **Verify Deployment**
-   ```bash
-   docker-compose ps               # Check container status
-   curl http://localhost:8383/health  # Verify backend health
-   curl http://localhost:3737         # Verify frontend access
-   ```
-
-### Nginx Configuration
-
-Add to your Nginx configuration:
-```nginx
-    location /copertine {
-        proxy_pass http://127.0.0.1:3737;
-        # Basic proxy headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # Updated Permissions-Policy with only widely supported features
-        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()";
-        proxy_redirect off;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    } 
-
-
-    location /images/ {
-        alias /home/mema/code/copertinefull/images/;
-        http2_push_preload on;
-        autoindex off;
-        
-        # Aggressive caching for images since they never change
-        expires max;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-        
-        # Performance optimizations
-        sendfile on;
-        tcp_nopush on;
-        tcp_nodelay on;
-        aio threads;
-        directio 512;  # For files larger than 512 bytes
-        
-        # Security headers
-        add_header X-Content-Type-Options "nosniff";
-        
-        # Only allow GET and HEAD
-        limit_except GET HEAD {
-            deny all;
-        }
-        
-        # Optional: Enable compression for JPEG if not already compressed
-        # gzip on;
-        # gzip_types image/jpeg;
-        # gzip_min_length 1024;
-    
-        # Optional but recommended: Cross-Origin settings
-        add_header Access-Control-Allow-Origin "https://dev.isagog.com";
-        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
-        add_header Timing-Allow-Origin "https://dev.isagog.com";
-    }
+frontend/          Next.js 15 app (TypeScript, Tailwind, pnpm)
+  app/api/         API routes — the only thing that talks to Postgres
+  app/copertine/   the archive page; `/` redirects here
+  Dockerfile       standalone output, non-root, self-contained CMD
+backend/
+  src/sd2.py       the Directus scraper
+  src/setup_db.sql schema, italian_unaccent config, cop_norm()
+  src/migrations/  incremental schema changes
+  docker/          scrape-loop.sh — the daily scheduler
+  tools/           occasional diagnostics (Directus gaps, date-file generation)
+nginx/             the image-serving container
+docs/              design history — see the header on current_analysis.md
 ```
-
-**Important Configuration Notes:**
-- The port in the `/copertine` location (3737) must match your frontend container's exposed port
-- The path in the `/images/` location (`/home/mema/code/copertinefull/images/`) must be updated to match your actual host system path where images are stored
-
-### Batch scraping Setup
-
-1. **Create Update Script**
-   Create `refreshbind.sh` in project root:
-   ```bash
-   #!/bin/bash
-
-   # Run the scraping process (verify the path is correct)
-   /home/mema/code/copertinefull/backend/.venv/bin/python /home/mema/code/copertinefull/backend/src/scrape2.py
-
-   # Restart the container
-   /usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ stop copfront
-   /usr/bin/docker compose --project-directory /home/mema/mema_docker_compose/ start copfront
-   ```
-
-2. **Make Script Executable**
-   ```bash
-   chmod +x refreshbind.sh
-   ```
-
-3. **Configure Crontab**
-   Add to crontab (runs at 5:00 AM, Tuesday through Sunday):
-   ```bash
-   0 5 * * 2-7 /home/mema/code/copertinefull/refreshbind.sh >> /home/mema/code/copertinefull/backend/scrape2.log 2>&1
-   ```
-
-### Verification
-
-1. **Test Scraper**
-   ```bash
-   ./refreshbind.sh  # Run manual scrape
-   ls -l images/     # Check for new images
-   ```
-
-2. **Monitor Logs**
-   ```bash
-   tail -f backend/scrape2.log  # Check scraper logs
-   docker-compose logs -f       # Check container logs
-   ```
 
 ## Development
 
-### Frontend
-- Located in `/frontend`
-- Next.js 14 with TypeScript
-- Tailwind CSS for styling
-- Client-side caching for performance
-- Docker container with mounted volumes
+Requires `pnpm` and `uv`. The dev server needs a database; `make local-up` opens a
+tunnel to the one on mema4 (two hops — see the Makefile header for why) and starts
+`next dev`.
 
-### Backend
-- Located in `/backend`
-- FastAPI application
-- Poetry for dependency management
-- Weaviate integration
-- Docker container with mounted volumes
+```bash
+make local-up          # tunnel + next dev on :3000
+make local-down        # tear both down
+make images            # build all three images locally, as CI does
+```
 
-## Features
+Set `DATABASE_URL` in `frontend/.env.local` to point at the tunnel:
 
-- Full-text BM25F search
-- Image preview on hover
-- Detailed image modal view
-- Sort by date or relevance
-- Responsive design
-- Fast search response times
+```
+DATABASE_URL=postgresql://copertine_app:<password>@localhost:5432/copertine
+```
 
-## License
+Lint and type-check the scraper with `uv run ruff check` and `uv run mypy src`.
 
-[License information to be added]
+## Configuration
+
+Nothing secret is committed. In production both of these come from Dokploy's
+Environment tab; locally they come from `.secrets` (gitignored) for the scraper and
+`frontend/.env.local` for the frontend.
+
+| Variable | Used by | Purpose |
+|---|---|---|
+| `DATABASE_URL` | both | Postgres connection string |
+| `DIRECTUS_API_TOKEN` | scraper | Bearer token for pulse.ilmanifesto.it |
+| `COP_IMAGES_DIR` | scraper | where covers are written (`/images` in the container) |
+| `COP_SCRAPE_AT_UTC` | scraper | daily fire time, `HH:MM` (default `08:00`) |
+| `COP_SCRAPE_LOOKBACK_DAYS` | scraper | days re-fetched per run (default `3`) |
+| `COP_SCRAPE_ON_START` | scraper | run once at container start (default `false`) |
+| `COP_LOG_FILE` | scraper | optional log file; unset means stderr only |
+
+## Deploying
+
+Merge to `main` → CI builds and pushes the changed images to GHCR → **Redeploy** the
+`copertine` app in Dokploy on mema4. Nothing is ever built on the deployment host,
+and nothing on it should ever be hand-edited.
+
+To roll back, pin `IMAGE_TAG` to a commit SHA in Dokploy's Environment tab rather
+than reverting and rebuilding.
+
+Full runbook — first deploy, database provisioning, volume seeding, verification —
+is in
+[`isagog-platform-dokploy/copertine/README.md`](https://github.com/Isagog/isagog-platform-dokploy/blob/master/copertine/README.md).
