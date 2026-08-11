@@ -4,7 +4,9 @@ A searchable archive of *il manifesto*'s daily front pages ("copertine"): 4500+
 editions back to 2013-03-27, each with its cover image, headline and kicker, updated
 every morning from the paper's CMS.
 
-Live at **https://copertine.ilmanifesto.it**.
+Currently live at **http://mema3.ilmanifesto.it/copertine**. Moving to mema4 as a
+Dokploy app — on the generated `*.traefik.me` host first, then
+`copertine.ilmanifesto.it` once DNS exists.
 
 ## What this repo is
 

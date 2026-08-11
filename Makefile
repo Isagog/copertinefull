@@ -102,11 +102,20 @@ local-log:
 # ──────────────────────────────────────────────
 # Images — the same three CI builds, run locally
 # ──────────────────────────────────────────────
-# A pre-push sanity check only. What actually deploys is always the CI-built
-# image from GHCR; nothing built here is ever pushed.
+# A pre-push sanity check only: does the Dockerfile still build? What actually
+# deploys is always the CI-built image from GHCR, and nothing built here is
+# ever pushed.
+#
+# --platform linux/amd64 is NOT optional on an Apple Silicon Mac. Docker would
+# otherwise build arm64 images that cannot run on mema4 (x86_64) at all, so a
+# clean local build would prove nothing about the deployment. Under emulation
+# these are slow — several minutes for the frontend — which is the other reason
+# CI (native amd64 runners) is the real build path.
+
+PLATFORM := linux/amd64
 
 images:
-	docker build -t copertine-frontend:local ./frontend
-	docker build -t copertine-scraper:local  ./backend
-	docker build -t copertine-images:local   ./nginx
-	@echo "Built copertine-{frontend,scraper,images}:local"
+	docker build --platform $(PLATFORM) -t copertine-frontend:local ./frontend
+	docker build --platform $(PLATFORM) -t copertine-scraper:local  ./backend
+	docker build --platform $(PLATFORM) -t copertine-images:local   ./nginx
+	@echo "Built copertine-{frontend,scraper,images}:local ($(PLATFORM))"
