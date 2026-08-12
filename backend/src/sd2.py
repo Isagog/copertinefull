@@ -25,6 +25,12 @@ HTTP_OK = 200
 # calendar days, not UTC calendar days.
 ROME_TZ = ZoneInfo("Europe/Rome")
 
+# datetime.weekday() index for Monday, the one weekday il manifesto does not
+# publish. The archive still holds 466 Monday editions, but they are historical
+# and taper off: the last one is 2024-06-10, and they were already sporadic for
+# a year before that. Forward-looking runs can treat Monday as always empty.
+MONDAY = 0
+
 
 class ScraperError(Exception):
     """Base exception for scraper errors."""
@@ -239,8 +245,22 @@ class DirectusManifestoScraper:
                 article = self._fetch_copertina_for_date(date)
                 if article:
                     self._process_copertina(article, date)
+                elif date.weekday() == MONDAY:
+                    # il manifesto does not publish on Mondays, so this is the
+                    # expected outcome roughly once per run — the default
+                    # lookback spans 3 days and therefore covers a Monday every
+                    # week. Logging it as an error made a routine weekly
+                    # non-event look like a failure.
+                    self.logger.info(f"No edition on Monday {date_str} (not published)")
                 else:
-                    self.logger.error(f"No copertina found for date: {date_str}")
+                    # A gap on any other day is NOT routine: it means Directus
+                    # has no cover for a day that should have one — a genuinely
+                    # missed edition, an upstream publishing delay, or a change
+                    # in the article metadata this query filters on. Warning
+                    # rather than error because the run itself succeeded and the
+                    # next one retries this date anyway (the lookback re-fetches
+                    # and the upsert is idempotent).
+                    self.logger.warning(f"No copertina found for date: {date_str}")
             except Exception:
                 self.logger.exception(f"Failed to process copertina for {date_str}")
                 continue
