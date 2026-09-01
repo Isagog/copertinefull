@@ -1,494 +1,221 @@
-""" Scrape Directus 2 — PostgreSQL backend """
+"""Fetch il manifesto's front pages from the CMS into Postgres.
+
+Reads through the `corpus` port: this file names no Directus field, no filter
+grammar and no endpoint. Retargeting a renamed instance is a `DirectusSchema`
+constant in `isagog-corpus`; a different CMS is a different adapter.
+
+WHY THIS NO LONGER DOES TIMEZONE ARITHMETIC
+-------------------------------------------
+The previous version queried *articles* by `datePublished`, which is true UTC,
+while il manifesto publishes each cover at Rome-local midnight — 22:00-23:00
+UTC the day before. Half this file was Rome-local window maths, a
+belt-and-braces re-derivation of the edition date, and a Monday special case.
+
+Editions carry `editionDate`, a plain calendar day, so asking for the edition
+of a date is exact. A day the paper does not publish simply has no edition,
+which is why Monday needs no special handling any more.
+"""
+
 import argparse
+import asyncio
 import logging
-import mimetypes
-import os
-import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
 from zoneinfo import ZoneInfo
 
-import psycopg2
-import requests
-from dotenv import load_dotenv
+from corpus import (
+    Capability,
+    Corpus,
+    CorpusError,
+    CorpusRequirements,
+    DocumentNotFound,
+    EditionQuery,
+    InvalidDocument,
+)
+from corpus_directus import DirectusCorpus
 
-# Add the project root to the Python path
-sys.path.append(str(Path(__file__).parent.parent))
+from copertine.config import (
+    MissingEnvironmentVariableError,
+    Settings,
+    load_settings,
+    setup_logging,
+)
+from copertine.naming import edition_id, image_filename
+from copertine.store import EditionStore
 
-# Constants
-HTTP_OK = 200
-# Il Manifesto publishes each edition's cover at Rome-local midnight, which is
-# 22:00-23:00 UTC the day before. Directus stores true UTC, so the query
-# window and the stored edition date must both be computed in Rome-local
-# calendar days, not UTC calendar days.
+#: The archive is keyed on Rome calendar days, so "today" must be Rome's today
+#: — the container runs with TZ=UTC, where a late-evening run would otherwise
+#: ask for the wrong day.
 ROME_TZ = ZoneInfo("Europe/Rome")
 
-# datetime.weekday() index for Monday, the one weekday il manifesto does not
-# publish. The archive still holds 466 Monday editions, but they are historical
-# and taper off: the last one is 2024-06-10, and they were already sporadic for
-# a year before that. Forward-looking runs can treat Monday as always empty.
-MONDAY = 0
-
-
-class ScraperError(Exception):
-    """Base exception for scraper errors."""
-    pass
-
-
-class MissingEnvironmentVariableError(ScraperError):
-    """Exception for missing environment variables."""
-
-    def __init__(self, var_name: str):
-        self.var_name = var_name
-        super().__init__(f"Environment variable '{var_name}' must be set.")
-
-
-class InvalidDateFormatError(ScraperError):
-    """Exception for invalid date formats."""
-
-    def __init__(self, date_str: str):
-        self.date_str = date_str
-        super().__init__(f"Invalid date format for '{date_str}'. Expected YYYY-MM-DD format.")
-
-
-class DateFileNotFoundError(ScraperError):
-    """Exception for missing date files."""
-
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        super().__init__(f"Date file not found: {file_path}")
-
-
-class DirectusManifestoScraper:
-    """Scraper for Il Manifesto copertina articles from Directus CMS."""
-
-    def __init__(self):
-        self._setup_logging()
-        self._load_environment()
-        self._init_db()
-        self._init_directus()
-        self._setup_images_dir()
-
-    def _setup_logging(self):
-        """Configure logging.
-
-        stderr is always a handler; a log FILE is only added when COP_LOG_FILE
-        is set. In a container the old unconditional scrapedirectus.log was
-        both invisible (it landed in the container's writable layer) and
-        unbounded, whereas stderr goes to Docker's json-file driver, which the
-        compose file rotates. On a host checkout, set COP_LOG_FILE to get the
-        previous behaviour back.
-        """
-        handlers: list[logging.Handler] = [logging.StreamHandler()]
-        log_file = os.getenv("COP_LOG_FILE")
-        if log_file:
-            handlers.append(logging.FileHandler(log_file))
-
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
-            handlers=handlers,
-        )
-        # Reduce noise from external libraries
-        for lib in ["httpx", "httpcore"]:
-            logging.getLogger(lib).setLevel(logging.WARNING)
-
-        self.logger = logging.getLogger(__name__)
-
-    def _load_environment(self):
-        """Load environment variables from project root .secrets."""
-        secrets_path = Path(__file__).parents[2] / '.secrets'
-        load_dotenv(dotenv_path=secrets_path, override=True)
-
-    def _get_required_env(self, var_name: str) -> str:
-        """Get a required environment variable or raise an error."""
-        value = os.getenv(var_name)
-        if value is None:
-            raise MissingEnvironmentVariableError(var_name)
-        return value
-
-    def _init_db(self):
-        """Initialize PostgreSQL connection."""
-        database_url = self._get_required_env("DATABASE_URL")
-        try:
-            self.db_conn = psycopg2.connect(database_url)
-            self.db_conn.autocommit = False
-            self.logger.info("Connected to PostgreSQL")
-        except Exception:
-            self.logger.exception("Failed to connect to PostgreSQL")
-            raise
-
-    def _upsert_edition(self, edition_id: str, edition_date: datetime,
-                        caption: str, kicker: str | None, image_filename: str):
-        """Upsert a copertina edition into PostgreSQL."""
-        sql = """
-            INSERT INTO editions (edition_id, edition_date, caption, kicker, image_filename)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (edition_id) DO UPDATE SET
-                caption = EXCLUDED.caption,
-                kicker = EXCLUDED.kicker,
-                image_filename = EXCLUDED.image_filename,
-                updated_at = now();
-        """
-        date_only = edition_date.date() if hasattr(edition_date, 'date') else edition_date
-        try:
-            with self.db_conn.cursor() as cur:
-                cur.execute(sql, (edition_id, date_only, caption, kicker, image_filename))
-            self.db_conn.commit()
-            self.logger.info(f"Upserted edition {edition_id} into PostgreSQL")
-        except Exception:
-            self.db_conn.rollback()
-            self.logger.exception(f"Failed to upsert edition {edition_id}")
-            raise
-
-    def _init_directus(self):
-        """Initialize Directus configuration."""
-        self.directus_token = self._get_required_env("DIRECTUS_API_TOKEN")
-        self.directus_headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self.directus_token}'
-        }
-        self.directus_url = "https://pulse.ilmanifesto.it/items/articles"
-        self.assets_url = "https://pulse.ilmanifesto.it/assets"
-
-    def _setup_images_dir(self):
-        """Setup images directory.
-
-        COP_IMAGES_DIR points this at the mounted volume under Docker, where
-        the source tree is at /app and the repo-relative default would put
-        covers on the container's writable layer — i.e. lose them on every
-        redeploy. The default keeps a host checkout working unchanged.
-        """
-        default = Path(__file__).parent.parent.parent / "images"
-        self.images_dir = Path(os.getenv("COP_IMAGES_DIR") or default)
-        self.images_dir.mkdir(parents=True, exist_ok=True)
-        self.logger.info(f"Images directory: {self.images_dir}")
-
-    def parse_dates_from_args(self) -> list[datetime]:
-        """Parse command line arguments and return list of dates to process."""
-        parser = argparse.ArgumentParser(
-            description="Fetch Il Manifesto copertina articles from Directus CMS and store in PostgreSQL"
-        )
-        group = parser.add_mutually_exclusive_group(required=True)
-        group.add_argument(
-            '-n', '--number',
-            type=int,
-            help='Number of days to fetch starting from today (e.g., -n 7 for last 7 days)'
-        )
-        group.add_argument(
-            '--date',
-            type=str,
-            help='Specific date to fetch in YYYY-MM-DD format'
-        )
-        group.add_argument(
-            '--datefile',
-            type=str,
-            help='File containing a list of dates to fetch, one per line in YYYY-MM-DD format'
-        )
-
-        args = parser.parse_args()
-
-        if args.number:
-            return self._generate_date_range(args.number)
-        elif args.date:
-            return [self._parse_single_date(args.date)]
-        elif args.datefile:
-            return self._parse_date_file(args.datefile)
-        return []
-
-    def _generate_date_range(self, number_of_days: int) -> list[datetime]:
-        """Generate a list of dates for the last N days."""
-        today = datetime.now(tz=timezone.utc)
-        dates = []
-        for i in range(number_of_days):
-            date = today - timedelta(days=i)
-            dates.append(date)
-        return dates
-
-    def _parse_single_date(self, date_str: str) -> datetime:
-        """Parse a single date string."""
-        try:
-            return datetime.strptime(f"{date_str} +0000", "%Y-%m-%d %z")
-        except ValueError as e:
-            raise InvalidDateFormatError(date_str) from e
-
-    def _parse_date_file(self, date_file_path: str) -> list[datetime]:
-        """Parse dates from a file."""
-        date_file = Path(date_file_path)
-        if not date_file.is_file():
-            raise DateFileNotFoundError(date_file_path)
-
-        dates = []
-        with date_file.open('r') as f:
-            for line_num, line in enumerate(f, 1):
-                date_str = line.strip()
-                if not date_str:
-                    continue
-                try:
-                    dates.append(self._parse_single_date(date_str))
-                except InvalidDateFormatError as e:
-                    self.logger.warning(f"Line {line_num}: {e}")
-                    continue
-        return dates
-
-    def process_copertine(self, dates: list[datetime]):
-        """Process copertina articles for multiple dates."""
-        self.logger.info(f"Processing {len(dates)} dates")
-
-        for date in dates:
-            date_str = date.strftime("%Y-%m-%d")
-            self.logger.info(f"Processing copertina for date: {date_str}")
-
-            try:
-                article = self._fetch_copertina_for_date(date)
-                if article:
-                    self._process_copertina(article, date)
-                elif date.weekday() == MONDAY:
-                    # il manifesto does not publish on Mondays, so this is the
-                    # expected outcome roughly once per run — the default
-                    # lookback spans 3 days and therefore covers a Monday every
-                    # week. Logging it as an error made a routine weekly
-                    # non-event look like a failure.
-                    self.logger.info(f"No edition on Monday {date_str} (not published)")
-                else:
-                    # A gap on any other day is NOT routine: it means Directus
-                    # has no cover for a day that should have one — a genuinely
-                    # missed edition, an upstream publishing delay, or a change
-                    # in the article metadata this query filters on. Warning
-                    # rather than error because the run itself succeeded and the
-                    # next one retries this date anyway (the lookback re-fetches
-                    # and the upsert is idempotent).
-                    self.logger.warning(f"No copertina found for date: {date_str}")
-            except Exception:
-                self.logger.exception(f"Failed to process copertina for {date_str}")
-                continue
-
-    def _fetch_copertina_for_date(self, date: datetime) -> dict[str, Any] | None:
-        """Fetch copertina article for a specific Rome-calendar date from Directus."""
-        day = date.date() if hasattr(date, 'date') else date
-        start_rome = datetime(day.year, day.month, day.day, tzinfo=ROME_TZ)
-        end_rome = start_rome + timedelta(days=1)
-        start_utc = start_rome.astimezone(timezone.utc)
-        end_utc = end_rome.astimezone(timezone.utc)
-
-        params = {
-            'fields': 'id,articleEdition,referenceHeadline,articleTag,articleKicker,datePublished,author,headline,articleEditionPosition,articleFeaturedImageDescription,articleFeaturedImage',
-            'filter[syncSource][_eq]': 'wp',
-            'filter[articlePositionCover][_eq]': 1,
-            'filter[datePublished][_gte]': start_utc.strftime('%Y-%m-%dT%H:%M:%S'),
-            'filter[datePublished][_lt]': end_utc.strftime('%Y-%m-%dT%H:%M:%S'),
-            'sort': '-datePublished',
-            'limit': 1
-        }
-
-        try:
-            response = requests.get(self.directus_url, params=params, headers=self.directus_headers, timeout=30.0)
-            response.raise_for_status()
-
-            articles = response.json().get('data', [])
-            if articles:
-                return articles[0]
-
-        except requests.RequestException:
-            self.logger.exception(f"Error fetching copertina for {date.strftime('%Y-%m-%d')}")
-
-        return None
-
-    def _process_copertina(self, article: dict[str, Any], date: datetime):
-        """Process a single copertina article."""
-        if not self._validate_article(article):
-            self.logger.warning(f"Article validation failed for ID {article.get('id')}")
-            return
-
-        edition_date = self._resolve_edition_date(article, date)
-
-        # Generate edition_id in DD-MM-YYYY format
-        edition_id = edition_date.strftime("%d-%m-%Y")
-
-        # Download image
-        image_filename = self._download_and_save_image(article, edition_date)
-        if image_filename:
-            self._upsert_edition(
-                edition_id=edition_id,
-                edition_date=edition_date,
-                caption=article.get("referenceHeadline", ""),
-                kicker=article.get("articleKicker"),
-                image_filename=image_filename,
-            )
-        else:
-            self.logger.error(f"Failed to download image for article {article.get('id')}")
-
-    def _resolve_edition_date(self, article: dict[str, Any], requested_date: datetime) -> datetime:
-        """Derive the true Rome-calendar edition date from the article's own publish timestamp.
-
-        Belt-and-braces alongside the Rome-aware query window in
-        _fetch_copertina_for_date: the stored date always reflects what the
-        article itself says, so a boundary edge case in the query can't silently
-        mislabel an edition again.
-        """
-        published_str = article.get('datePublished')
-        if not published_str:
-            return requested_date
-
-        published_utc = datetime.fromisoformat(published_str.replace('Z', '+00:00'))
-        edition_date = published_utc.astimezone(ROME_TZ)
-
-        if edition_date.date() != requested_date.date():
-            self.logger.info(
-                f"Article {article.get('id')} published {published_str} resolves to "
-                f"Rome edition date {edition_date.date()}, not queried date {requested_date.date()}"
-            )
-
-        return edition_date
-
-    def _validate_article(self, article: dict[str, Any]) -> bool:
-        """Validate that an article has all required properties."""
-        required_fields = ["referenceHeadline", "articleFeaturedImage"]
-        article_id = article.get("id", "N/A")
-
-        for field in required_fields:
-            if not article.get(field):
-                self.logger.error(f"Article {article_id}: Missing required property: {field}")
-                return False
-
-        # Log warnings for optional fields
-        optional_fields = ["articleKicker"]
-        for field in optional_fields:
-            if not article.get(field):
-                self.logger.warning(f"Article {article_id}: Missing optional property: {field}")
-
-        return True
-
-    def _download_and_save_image(self, article: dict[str, Any], date: datetime) -> str | None:
-        """Download and save the article's featured image."""
-        image_id = article.get('articleFeaturedImage')
-        if not image_id:
-            self.logger.error(f"No featured image ID for article {article.get('id')}")
-            return None
-
-        # Get the actual image URL from Directus
-        image_url = self._get_asset_url(image_id)
-        if not image_url:
-            return None
-
-        # Generate filename
-        filename = self._generate_image_filename(article, date)
-        if not filename:
-            return None
-
-        # Download the image
-        return self._download_image(image_url, filename)
-
-    def _get_asset_url(self, image_id: str) -> str | None:
-        """Get the asset URL for an image ID."""
-        try:
-            image_record_url = f"https://pulse.ilmanifesto.it/items/images/{image_id}"
-
-            response = requests.get(image_record_url, headers=self.directus_headers, timeout=30.0)
-            response.raise_for_status()
-
-            image_record = response.json().get('data')
-            if image_record and "image" in image_record:
-                return f"{self.assets_url}/{image_record['image']}"
-            else:
-                self.logger.error(f"Malformed image record for image ID {image_id}")
-                return None
-
-        except requests.RequestException:
-            self.logger.exception(f"Error getting asset URL for image {image_id}")
-            return None
-
-    def _generate_image_filename(self, article: dict[str, Any], date: datetime) -> str | None:
-        """Generate a descriptive filename for the image."""
-        try:
-            headline = article.get("referenceHeadline", "")
-            if not headline:
-                self.logger.warning(f"No headline for article {article.get('id')}")
-                return f"il-manifesto_{date.strftime('%Y-%m-%d')}_no-headline"
-            else:
-                slug = self._slugify(headline)
-                date_str = date.strftime('%Y-%m-%d')
-                return f"il-manifesto_{date_str}_{slug}"
-
-        except Exception:
-            self.logger.exception("Error generating filename")
-            return None
-
-    def _slugify(self, text: str) -> str:
-        """Convert string to a URL-friendly slug."""
-        text = text.lower()
-        text = re.sub(r'[\s\W]+', '-', text)
-        return text.strip('-')
-
-    def _download_image(self, image_url: str, base_filename: str) -> str | None:
-        """Download image from URL and save to file."""
-        try:
-            self.logger.info(f"Downloading image from: {image_url}")
-            response = requests.get(image_url, headers=self.directus_headers, timeout=30.0)
-            response.raise_for_status()
-
-            if response.status_code != HTTP_OK:
-                self.logger.warning(f"Failed to download image. Status code: {response.status_code}")
-                return None
-
-            # Determine file extension from content type
-            content_type = response.headers.get('content-type')
-            if not content_type:
-                self.logger.warning(f"No content-type header for image {image_url}")
-                extension = '.jpg'  # Fallback
-            else:
-                extension = mimetypes.guess_extension(content_type) or '.jpg'
-
-            # Create full filename with extension
-            filename_with_ext = f"{base_filename}{extension}"
-            file_path = self.images_dir / filename_with_ext
-
-            # Save the image
-            file_path.write_bytes(response.content)
-            self.logger.info(f"Image saved to {file_path}. Size: {len(response.content)} bytes")
-
-        except Exception:
-            self.logger.exception(f"Error downloading image {image_url}")
-            return None
-        else:
-            return filename_with_ext
-
-    def cleanup(self):
-        """Clean up resources."""
-        if hasattr(self, 'db_conn') and self.db_conn:
-            try:
-                self.db_conn.close()
-                self.logger.info("PostgreSQL connection closed")
-            except Exception:
-                self.logger.exception("Error closing PostgreSQL connection")
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.cleanup()
-
-
-def main():
-    """Main entry point."""
+#: Checked once at startup, so a backend that cannot serve front pages says so
+#: on day one as a printed list rather than as a crash in week three.
+REQUIREMENTS = CorpusRequirements(
+    required=frozenset({Capability.EDITIONS, Capability.EDITION_COVER, Capability.ASSETS})
+)
+
+logger = logging.getLogger("copertine")
+
+
+class InvalidDateFormatError(ValueError):
+    def __init__(self, value: str) -> None:
+        super().__init__(f"Invalid date format for '{value}'. Expected YYYY-MM-DD format.")
+
+
+class DateFileNotFoundError(FileNotFoundError):
+    def __init__(self, path: str) -> None:
+        super().__init__(f"Date file not found: {path}")
+
+
+# --- CLI --------------------------------------------------------------------
+def parse_dates() -> list[date]:
+    parser = argparse.ArgumentParser(
+        description="Fetch il manifesto front pages from the CMS and store them in PostgreSQL"
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "-n", "--number", type=int,
+        help="Number of days to fetch ending today (e.g. -n 7 for the last 7 days)",
+    )
+    group.add_argument("--date", type=str, help="A single date, YYYY-MM-DD")
+    group.add_argument(
+        "--datefile", type=str, help="File of dates to fetch, one YYYY-MM-DD per line"
+    )
+    args = parser.parse_args()
+
+    if args.number:
+        return _recent_days(args.number)
+    if args.date:
+        return [_parse_day(args.date)]
+    return _read_date_file(args.datefile)
+
+
+def _recent_days(count: int) -> list[date]:
+    """Rome's today, backwards — not the host's, and not UTC's."""
+    today = datetime.now(tz=ROME_TZ).date()
+    return [today - timedelta(days=offset) for offset in range(count)]
+
+
+def _parse_day(value: str) -> date:
     try:
-        with DirectusManifestoScraper() as scraper:
-            # a) Parse command line args to generate list of dates
-            dates = scraper.parse_dates_from_args()
+        return date.fromisoformat(value)
+    except ValueError as err:
+        raise InvalidDateFormatError(value) from err
 
-            # b) Process copertine for all dates
-            scraper.process_copertine(dates)
 
-        logging.getLogger(__name__).info("Successfully completed copertina processing.")
+def _read_date_file(path: str) -> list[date]:
+    date_file = Path(path)
+    if not date_file.is_file():
+        raise DateFileNotFoundError(path)
 
-    except ScraperError:
-        logging.getLogger(__name__).exception("Scraper error")
+    days: list[date] = []
+    for number, line in enumerate(date_file.read_text().splitlines(), 1):
+        text = line.strip()
+        if not text:
+            continue
+        try:
+            days.append(_parse_day(text))
+        except InvalidDateFormatError as err:
+            logger.warning("Line %d: %s", number, err)
+    return days
+
+
+# --- the work ---------------------------------------------------------------
+async def store_cover(corpus: Corpus, store: EditionStore, day: date, settings: Settings) -> None:
+    """Fetch one day's front page and upsert it. Never raises for an ordinary
+    absence — only genuine failures reach the caller."""
+    editions = await corpus.list_editions(EditionQuery(date_exact=day))
+    if not editions:
+        # Not an error: the paper does not publish every day (no Monday
+        # edition since 2024-06-10), and today's may not be out yet.
+        logger.info("No edition published on %s", day)
+        return
+    if len(editions) > 1:
+        # The CMS holds two parallel edition series for the older archive —
+        # one synced from WordPress, one from "athena" — and they disagree
+        # about which cover belongs to which day. Verified 2026-09-01: every
+        # date in 2018-2023 carries two editions, 73% of 2013 does, and 2024
+        # onward carries exactly one. Picking either is a coin flip that
+        # writes a wrong headline into a NOT NULL column, so this refuses.
+        # It cannot fire on the daily run; it fires on a historical backfill,
+        # which is the case that needs a decision, not a guess.
+        logger.error(
+            "%d editions dated %s (%s) — ambiguous, skipping",
+            len(editions),
+            day,
+            ", ".join(ref.id for ref in editions),
+        )
+        return
+    edition = editions[0]
+
+    try:
+        cover = await corpus.get_edition_cover(edition.id)
+    except DocumentNotFound:
+        logger.warning("Edition %s (%s) has no front page", edition.id, day)
+        return
+    except InvalidDocument as err:
+        # The display headline is null across the pre-2015 archive. Skipping
+        # keeps a blank caption out of a NOT NULL column.
+        logger.warning("Edition %s (%s) has an unusable front page: %s", edition.id, day, err)
+        return
+
+    if cover.image is None:
+        logger.error("Front page of %s carries no image", day)
+        return
+
+    filename = image_filename(day, cover.headline, cover.image)
+    payload = await corpus.fetch_asset(cover.image.id, max_bytes=settings.max_image_bytes)
+    (settings.images_dir / filename).write_bytes(payload)
+    logger.info("Saved %s (%d bytes)", filename, len(payload))
+
+    store.upsert(
+        edition_id=edition_id(day),
+        edition_date=day,
+        caption=cover.headline,
+        # The column is nullable and the old scraper wrote NULL, not "".
+        kicker=cover.kicker or None,
+        image_filename=filename,
+    )
+
+
+async def run(days: list[date], settings: Settings) -> None:
+    corpus = DirectusCorpus(
+        base_url=settings.directus_url, api_key=settings.directus_token
+    )
+    try:
+        corpus.require(REQUIREMENTS)  # fail fast, names the gap
+        await corpus.ping()  # fail fast, auth and connectivity
+        logger.info("Processing %d date(s)", len(days))
+        with EditionStore(settings.database_url) as store:
+            for day in days:
+                try:
+                    await store_cover(corpus, store, day, settings)
+                except CorpusError:
+                    # One bad day must not cost the rest of the run; the next
+                    # lookback re-fetches it and the upsert is idempotent.
+                    logger.exception("Failed to process %s", day)
+                except Exception:
+                    logger.exception("Unexpected failure processing %s", day)
+    finally:
+        await corpus.aclose()
+
+
+def main() -> None:
+    setup_logging()
+    try:
+        days = parse_dates()
+        asyncio.run(run(days, load_settings()))
+    except (MissingEnvironmentVariableError, InvalidDateFormatError, DateFileNotFoundError):
+        logger.exception("Configuration error")
+        sys.exit(1)
+    except CorpusError:
+        logger.exception("The archive backend could not be reached")
         sys.exit(1)
     except Exception:
-        logging.getLogger(__name__).exception("Unexpected error")
+        logger.exception("Unexpected error")
         sys.exit(1)
+    logger.info("Successfully completed copertina processing.")
 
 
 if __name__ == "__main__":

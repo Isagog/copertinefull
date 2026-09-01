@@ -6,22 +6,40 @@ authors = [
     {name = "Robert Alexander", email = "gogonegro@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "python-dotenv>=1.0.1",
-    "beautifulsoup4>=4.12.3",
-    "pydantic>=2.10.4",
-    "requests>=2.32.3",
     "psycopg2-binary>=2.9.9",
+    # The CMS data access layer. Everything that knows a Directus field name,
+    # endpoint or filter operator lives there, not here.
+    "isagog-corpus",
 ]
+
+# Pinned to a commit, not a branch: uv.lock records the resolved SHA, so a
+# rebuild months from now installs the same library. Move this to a tag once
+# isagog-corpus cuts one.
+[tool.uv.sources]
+isagog-corpus = { git = "https://github.com/Isagog/isagog-corpus.git", rev = "4c3ac75" }
 
 [dependency-groups]
 dev = [
     "ruff>=0.11.13",
     "mypy>=1.14.1",
-    "types-beautifulsoup4>=4.12.0.20241020",
-    "types-requests>=2.32.0.20241016",
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.0.0",
+    "types-psycopg2>=2.9.21",
 ]
 
 [tool.uv]
 package = false
+
+# `src` is not a package root on sys.path by default, but it is at runtime:
+# the scraper is launched as `python src/sd2.py`, which puts src/ first. Both
+# checkers need telling, or every `copertine.*` import reads as missing.
+[tool.mypy]
+mypy_path = "src"
+
+[tool.pyright]
+extraPaths = ["src"]
+venvPath = "."
+venv = ".venv"

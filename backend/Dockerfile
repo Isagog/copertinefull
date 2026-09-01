@@ -5,7 +5,7 @@
 # scraper and its scheduler (docker/scrape-loop.sh), and the compose file
 # supplies only configuration.
 
-FROM ghcr.io/astral-sh/uv:0.9-python3.12-bookworm-slim AS deps
+FROM ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim AS deps
 
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
@@ -17,12 +17,18 @@ ENV UV_COMPILE_BYTECODE=1 \
 # `--no-dev` drops ruff/mypy/type stubs, which are a CI concern, not a runtime
 # one. pyproject.toml sets `[tool.uv] package = false`, so this installs the
 # dependencies and never the project itself.
+# git is needed at build time: isagog-corpus is a git dependency. It lives in
+# the deps stage only — the runtime image copies the built venv, not this layer.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.13-slim-bookworm AS runtime
 
 # psycopg2-binary ships its own libpq, so no libpq-dev here. `date -u -d` in
 # scrape-loop.sh is GNU date, which is why the runtime is Debian rather than
