@@ -33,7 +33,7 @@ from corpus import (
     EditionQuery,
     InvalidDocument,
 )
-from corpus_directus import DirectusCorpus
+from corpus_directus import MANIFESTO_WP_SCHEMA, DirectusCorpus
 
 from copertine.config import (
     MissingEnvironmentVariableError,
@@ -132,14 +132,11 @@ async def store_cover(corpus: Corpus, store: EditionStore, day: date, settings: 
         logger.info("No edition published on %s", day)
         return
     if len(editions) > 1:
-        # The CMS holds two parallel edition series for the older archive —
-        # one synced from WordPress, one from "athena" — and they disagree
-        # about which cover belongs to which day. Verified 2026-09-01: every
-        # date in 2018-2023 carries two editions, 73% of 2013 does, and 2024
-        # onward carries exactly one. Picking either is a coin flip that
-        # writes a wrong headline into a NOT NULL column, so this refuses.
-        # It cannot fire on the daily run; it fires on a historical backfill,
-        # which is the case that needs a decision, not a guess.
+        # Unreachable while the corpus is scoped to the `wp` series, which has
+        # one edition per date across its whole range. Kept as a tripwire: if
+        # the scoping is ever lost the archive would start taking whichever
+        # edition of an overlapping series came back first, and a wrong
+        # headline in a NOT NULL column is not something to discover later.
         logger.error(
             "%d editions dated %s (%s) — ambiguous, skipping",
             len(editions),
@@ -180,8 +177,16 @@ async def store_cover(corpus: Corpus, store: EditionStore, day: date, settings: 
 
 
 async def run(days: list[date], settings: Settings) -> None:
+    # MANIFESTO_WP_SCHEMA scopes editions to the `wp` import series. The CMS
+    # holds four overlapping series (mema, athenaPre2002, athena, wp), so
+    # without this a date in 2018-2023 resolves to two different editions and
+    # nothing in the row says which is authoritative. `wp` is the live one —
+    # 4165 editions on 4165 distinct dates, starting 2013-03-27, which is
+    # exactly where this archive begins.
     corpus = DirectusCorpus(
-        base_url=settings.directus_url, api_key=settings.directus_token
+        base_url=settings.directus_url,
+        api_key=settings.directus_token,
+        schema=MANIFESTO_WP_SCHEMA,
     )
     try:
         corpus.require(REQUIREMENTS)  # fail fast, names the gap

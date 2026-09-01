@@ -19,7 +19,7 @@ dependencies = [
 # rebuild months from now installs the same library. Move this to a tag once
 # isagog-corpus cuts one.
 [tool.uv.sources]
-isagog-corpus = { git = "https://github.com/Isagog/isagog-corpus.git", rev = "4c3ac75" }
+isagog-corpus = { git = "https://github.com/Isagog/isagog-corpus.git", rev = "84016fe" }
 
 [dependency-groups]
 dev = [
