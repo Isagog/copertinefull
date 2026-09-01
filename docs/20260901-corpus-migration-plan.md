@@ -241,34 +241,65 @@ reported as unpublished by both, the new one without any timezone code.
 
 Two differences, both real:
 
-### 7.1 The CMS holds two parallel edition series
+### 7.1 The CMS holds four overlapping edition series — resolved
 
-`editions` carries both a WordPress-synced and an "athena"-synced series for the
-older archive, and they disagree about which cover belongs to which day. For
-2013-04-05 the `wp` edition's cover article is *"I caymani"* — published
-2013-04-04T19:56Z, which the existing archive stores as the **04-04** cover —
-while the `athena` edition for that date has no cover article at all. The old
-scraper, querying articles by UTC day with `syncSource=wp`, returned *"Poveri
-noi"*, which is what the archive actually holds for 04-05.
+`editions` carries four imported series, measured against the live instance
+2026-09-01:
 
-Duplicate rate by year, measured against the live instance:
+| series | editions | range |
+|---|---|---|
+| `mema` | 7188 | 1971-04-28 → 2008-11-10 |
+| `athenaPre2002` | 2129 | 1995-01-17 → 2001-12-30 |
+| `athena` | 5723 | 2001-02-06 → 2023-12-31 |
+| **`wp`** | **4165** | **2013-03-27 → today** |
 
-| Years | Dates carrying more than one edition |
-|---|---|
-| 2012, 2015, 2024, 2025, 2026 | 0% |
-| 2016 | 0.3% |
-| 2014 | 11% |
-| 2017 | 41% |
-| 2013 | 73% |
-| **2018–2023** | **~100%** |
+They overlap, so a date could resolve to more than one edition — every date in
+2018–2023 did — and nothing in the row says which is authoritative.
 
-The daily job is unaffected: every date from 2024 onward carries exactly one
-edition. A *backfill* is affected everywhere before that.
+**Resolved by scoping the corpus to `wp`** (`MANIFESTO_WP_SCHEMA`, isagog-corpus
+PR #3). `wp` is the live series: it alone is still written, it has 4165 editions
+on 4165 distinct dates — no ambiguity anywhere in its range — and it begins
+2013-03-27, which is exactly where this archive begins. The other three are
+historical imports that end in 2008, 2001 and 2023.
 
-`sd2.py` therefore **refuses to guess** — more than one edition for a date is
-logged as an error and the day is skipped. Picking either would write a wrong
-headline into a `NOT NULL` column, and the ambiguity is a decision, not a
-tie-break. This supersedes the assumption in §5 that an edition date is unique.
+The ambiguity refusal in `sd2.py` is now unreachable and kept only as a tripwire.
+
+### 7.1b The historical archive is one day earlier than the publisher
+
+Scoping to `wp` exposed a **pre-existing** discrepancy that the ambiguity check
+had been masking. For a `wp` edition dated D, the cover article is published the
+evening before D. Until about 2023 that evening was ~19:30–20:40 UTC, i.e.
+21:30–22:40 **Rome** — still the previous calendar day in Rome. Only later did
+publishing move past 22:00 UTC (Rome midnight), at which point Rome-day and
+`editionDate` coincide.
+
+Both the old scraper and the archive it built key on the article's publish day,
+so they are one day early wherever those differ. Sampling one June fortnight per
+year, comparing the cover's Rome-local publish day to `editionDate`:
+
+| year | same day | one day early |
+|---|---|---|
+| 2013, 2014, 2018, 2020 | 0 | all |
+| 2015, 2016, 2017, 2022 | 1–6 | most |
+| **2024, 2026** | **all** | **0** |
+
+The publisher's own titles settle which is right:
+
+| CMS edition title | cover | copertine row |
+|---|---|---|
+| il manifesto del **04**.04.2013 | Impresa in giro | **03**-04-2013 |
+| il manifesto del **05**.04.2013 | I caymani | **04**-04-2013 |
+| il manifesto del **06**.04.2013 | Poveri noi | **05**-04-2013 |
+
+So roughly 2013–2023 of the stored archive is dated one day earlier than the
+paper it came from. **The daily job is unaffected** — 2024 onward agrees exactly,
+which is why the parity run matched on every modern date.
+
+This is not something to fix as a side effect. Re-dating ten years of a public
+archive changes every permalink and every filename, and it is a product
+decision. It is recorded here so that whoever runs a backfill knows that
+backfilling from `wp` editions *moves* those rows rather than merely filling
+them in.
 
 ### 7.2 Kickers lose a trailing space
 

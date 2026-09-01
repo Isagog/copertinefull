@@ -62,7 +62,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "isagog-corpus", git = "https://github.com/Isagog/isagog-corpus.git?rev=4c3ac75" },
+    { name = "isagog-corpus", git = "https://github.com/Isagog/isagog-corpus.git?rev=84016fe" },
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
 ]
@@ -134,7 +134,7 @@ wheels = [
 [[package]]
 name = "isagog-corpus"
 version = "0.1.0"
-source = { git = "https://github.com/Isagog/isagog-corpus.git?rev=4c3ac75#4c3ac752817c91311ba12e5c0c48b0ba21d1c75c" }
+source = { git = "https://github.com/Isagog/isagog-corpus.git?rev=84016fe#84016fec0ede0c249d57cf5174a0008a69233fad" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
