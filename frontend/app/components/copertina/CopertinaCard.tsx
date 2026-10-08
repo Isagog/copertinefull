@@ -75,8 +75,11 @@ export default function CopertinaCard({
 }: CopertinaCardProps) {
   const [isPopupVisible, setIsPopupVisible] = useState(false);
 
-  // Direct image path — no cache layer needed
-  const imagePath = `/images/${copertina.filename}`;
+  // `?v=` changes whenever the scraper rewrites the row. The file keeps its
+  // name when a cover is replaced, and /images/ is cached as immutable.
+  const imagePath = `/images/${copertina.filename}${
+    copertina.version ? `?v=${copertina.version}` : ''
+  }`;
   const formattedDate = formatItalianDate(copertina.isoDate);
 
   // Under "Solo titolo" the kicker was never searched, so marking it would

@@ -11,6 +11,7 @@ export interface CopertineData {
 
 export interface CopertineEntry extends CopertineData {
     filename: string;
+    version?: number; // epoch seconds of the row's last write; busts image caches
 }
 
 export interface PaginationInfo {

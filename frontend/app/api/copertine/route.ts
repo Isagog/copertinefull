@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
     const [limitPos, offsetPos] = q ? ['$2', '$3'] : ['$1', '$2'];
 
     const dataQuery = `
-      SELECT edition_id, edition_date, caption, kicker, image_filename${projection ? `,
+      SELECT edition_id, edition_date, caption, kicker, image_filename, updated_at${projection ? `,
              ${projection}` : ''}
       FROM editions
       ${whereClause}
@@ -211,6 +211,10 @@ function rowToEntry(row: any) {
     kickerStr: (row.kicker ?? '') as string,
     date: new Date(isoDate).toLocaleDateString('it-IT'),
     filename: row.image_filename as string,
+    // Cache-buster for the image URL. A rescraped cover is overwritten under
+    // the same filename, and /images/ is served `immutable`, so without this
+    // Cloudflare and browsers keep the old picture for up to a year.
+    version: Math.floor(new Date(row.updated_at).getTime() / 1000),
     isoDate,
     ...(row.caption_hl != null && { caption_hl: row.caption_hl as string }),
     ...(row.kicker_hl != null && { kicker_hl: row.kicker_hl as string }),
