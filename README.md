@@ -120,7 +120,7 @@ Lint and type-check the scraper with `uv run ruff check` and `uv run mypy src`.
 
 ## Configuration
 
-Nothing secret is committed. In production both of these come from Dokploy's
+Nothing secret is committed. In production all of these come from Dokploy's
 Environment tab; locally they come from `.secrets` (gitignored) for the scraper and
 `frontend/.env.local` for the frontend.
 
@@ -133,6 +133,30 @@ Environment tab; locally they come from `.secrets` (gitignored) for the scraper 
 | `COP_SCRAPE_LOOKBACK_DAYS` | scraper | days re-fetched per run (default `3`) |
 | `COP_SCRAPE_ON_START` | scraper | run once at container start (default `false`) |
 | `COP_LOG_FILE` | scraper | optional log file; unset means stderr only |
+| `ALLOWED_EMAILS` | frontend | comma-separated addresses that may log in |
+| `AUTH_SECRET` | frontend | HMAC key for links and session cookies, ≥ 32 chars (`openssl rand -hex 32`) |
+| `APP_URL` | frontend | public origin, e.g. `https://copertine.ilmanifesto.it` — builds the emailed link |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | frontend | mail server for the login links (port `465` = implicit TLS, default; others use STARTTLS) |
+
+## Access
+
+The whole site — pages, `/api/copertine` and the covers under `/images` — is behind
+a magic-link login. `/login` takes an email; if it is in `ALLOWED_EMAILS` a link
+valid for 15 minutes is mailed to it, and opening the link sets a 30-day httpOnly
+`cop_session` cookie. Nothing is stored server-side: link and cookie are both
+HMAC-signed with `AUTH_SECRET`.
+
+- **Grant or revoke access:** edit `ALLOWED_EMAILS` and redeploy. The allowlist is
+  checked on every request, so a removed address is locked out immediately, cookie
+  or not.
+- **Log everybody out:** change `AUTH_SECRET` and redeploy.
+- **Covers:** the `copertine-images` nginx asks the front's `/auth/check` before
+  serving each file (`auth_request`), so it shares the same cookie.
+- If any of the variables above is missing the site answers 503 to everyone — it
+  fails closed. Locally that means `frontend/.env.local` needs them too.
+- A link can be opened more than once within its 15 minutes (there is no
+  server-side state to remember it was used); that is the accepted price of
+  having no store.
 
 ## Deploying
 
